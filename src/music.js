@@ -9,7 +9,7 @@ function createMusic() {
       const s = { connection: null, player, queue: [], current: null, volume: 70, loop: "off", skipRequested: false, stopRequested: false };
       player.on(AudioPlayerStatus.Idle, () => {
         if (s.stopRequested) { s.stopRequested = false; s.current = null; return; }
-        if (s.loop === "track" && s.current && !s.skipRequested) s.queue.unshift(s.current);
+        if (s.current && !s.skipRequested) {\n          if (s.loop === "track") s.queue.unshift(s.current);\n          else if (s.loop === "queue") s.queue.push(s.current);\n        }
         s.skipRequested = false;
         s.current = null;
         next(id).catch(console.error);

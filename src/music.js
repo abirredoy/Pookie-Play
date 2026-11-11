@@ -1,5 +1,9 @@
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, entersState, NoSubscriberBehavior } = require("@discordjs/voice");
 const play = require("play-dl");
+const fs = require("node:fs");
+const path = require("node:path");
+const AUDIO_DIR = path.join(process.cwd(), "assets", "audio");
+const AUDIO_EXTENSIONS = new Set([".mp3", ".ogg", ".wav", ".flac", ".m4a"]);
 
 function createMusic() {
   const states = new Map();
@@ -71,12 +75,14 @@ function createMusic() {
     s.current = item;
     s.lastError = null;
     try {
-      const stream = await play.stream(item.url);
-      const resource = createAudioResource(stream.stream, {
-        inputType: stream.type,
-        inlineVolume: true
-      });
-      resource.volume.setVolume(s.volume / 100);
+      let resource;
+      if (item.filePath) {
+        resource = createAudioResource(item.filePath, { inlineVolume: true });
+      } else {
+        const stream = await play.stream(item.url);
+        resource = createAudioResource(stream.stream, { inputType: stream.type, inlineVolume: true });
+      }
+      resource.volume?.setVolume(s.volume / 100);
       s.player.play(resource);
     } catch (error) {
       console.error("YouTube playback error:", error);
@@ -134,6 +140,24 @@ function createMusic() {
     return `🎵 **${item.title}** queue-তে যোগ হয়েছে।`;
   }
 
+  function listFiles() {
+    if (!fs.existsSync(AUDIO_DIR)) return [];
+    return fs.readdirSync(AUDIO_DIR, { withFileTypes: true })
+      .filter(entry => entry.isFile() && AUDIO_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))
+      .map(entry => entry.name).sort((a, b) => a.localeCompare(b));
+  }
+
+  async function playFile(guildId, filename, requestedBy) {
+    const s = state(guildId);
+    const safeName = path.basename(filename);
+    if (safeName !== filename || !AUDIO_EXTENSIONS.has(path.extname(safeName).toLowerCase())) return "এই ফাইলের নাম বা ফরম্যাট গ্রহণযোগ্য নয়।";
+    const filePath = path.join(AUDIO_DIR, safeName);
+    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return "এই অডিও ফাইলটি assets/audio ফোল্ডারে পাওয়া যায়নি। আগে GitHub-এ ফাইলটি যোগ করো।";
+    s.queue.push({ filePath, title: safeName, requestedBy });
+    if (!s.current && ![AudioPlayerStatus.Playing, AudioPlayerStatus.Buffering, AudioPlayerStatus.Paused].includes(s.player.state.status)) await next(guildId);
+    return "🎵 **" + safeName + "** queue-তে যোগ হয়েছে।";
+  }
+
   return {
     join,
     leave(id) {
@@ -147,6 +171,8 @@ function createMusic() {
       states.delete(id);
     },
     play: playQuery,
+    playFile,
+    listFiles,
     pause(id) { return state(id).player.pause(); },
     resume(id) { return state(id).player.unpause(); },
     skip(id) {

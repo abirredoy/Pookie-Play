@@ -3,7 +3,7 @@
 A starter Discord music bot with slash commands and a small web dashboard.
 
 ## Requirements
-- Node.js 20+
+- Node.js 22.12+ (required by the current stable discord voice package documentation)
 - A Discord application and bot
 - A server where you have permission to add the bot
 

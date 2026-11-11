@@ -75,7 +75,7 @@ function createMusic() {
     leave(id) {
       const s = states.get(id);
       if (s?.connection) s.connection.destroy();
-      if (s) s.player.stop(true);
+      if (s) { s.stopRequested = true; s.player.stop(true); }
       states.delete(id);
     },
     play: playQuery,

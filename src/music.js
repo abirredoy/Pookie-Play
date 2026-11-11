@@ -154,7 +154,10 @@ function createMusic() {
     const filePath = path.join(AUDIO_DIR, safeName);
     if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return "এই অডিও ফাইলটি assets/audio ফোল্ডারে পাওয়া যায়নি। আগে GitHub-এ ফাইলটি যোগ করো।";
     s.queue.push({ filePath, title: safeName, requestedBy });
-    if (!s.current && ![AudioPlayerStatus.Playing, AudioPlayerStatus.Buffering, AudioPlayerStatus.Paused].includes(s.player.state.status)) await next(guildId);
+    if (!s.current && ![AudioPlayerStatus.Playing, AudioPlayerStatus.Buffering, AudioPlayerStatus.Paused].includes(s.player.state.status)) {
+      await next(guildId);
+      if (s.lastError) return "⚠️ অডিও ফাইলটি চালু হয়নি: " + s.lastError;
+    }
     return "🎵 **" + safeName + "** queue-তে যোগ হয়েছে।";
   }
 

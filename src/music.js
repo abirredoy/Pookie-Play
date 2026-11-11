@@ -45,6 +45,10 @@ function createMusic() {
       selfDeaf: true
     });
     s.connection = connection;
+    connection.on("debug", (message) => console.log("[Voice Debug]", message));
+    connection.on("stateChange", (oldState, newState) => {
+      console.log(`[Voice] ${oldState.status} -> ${newState.status}`);
+    });
     connection.subscribe(s.player);
     connection.on(VoiceConnectionStatus.Disconnected, () => { s.connection = null; });
     try {

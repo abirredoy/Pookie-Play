@@ -1,5 +1,8 @@
 require("dotenv").config();
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require("discord.js");
+const {
+  Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder,
+  EmbedBuilder
+} = require("discord.js");
 const express = require("express");
 const { createMusic } = require("./music");
 
@@ -20,11 +23,21 @@ const commands = [
   new SlashCommandBuilder().setName("skip").setDescription("Skip the current track"),
   new SlashCommandBuilder().setName("stop").setDescription("Stop playback and clear the queue"),
   new SlashCommandBuilder().setName("queue").setDescription("Show the current queue"),
-  new SlashCommandBuilder().setName("volume").setDescription("Set volume").addIntegerOption(o => o.setName("value").setDescription("0 to 100").setMinValue(0).setMaxValue(100).setRequired(true))
-].map(c => c.toJSON());
+  new SlashCommandBuilder().setName("nowplaying").setDescription("Show the current track"),
+  new SlashCommandBuilder().setName("shuffle").setDescription("Shuffle the upcoming queue"),
+  new SlashCommandBuilder().setName("loop").setDescription("Set loop mode")
+    .addStringOption(o => o.setName("mode").setDescription("Loop mode").setRequired(true)
+      .addChoices({ name: "Off", value: "off" }, { name: "Current track", value: "track" }, { name: "Queue", value: "queue" })),
+  new SlashCommandBuilder().setName("remove").setDescription("Remove a song from the queue")
+    .addIntegerOption(o => o.setName("position").setDescription("Queue position").setMinValue(1).setRequired(true)),
+  new SlashCommandBuilder().setName("volume").setDescription("Set volume")
+    .addIntegerOption(o => o.setName("value").setDescription("0 to 100").setMinValue(0).setMaxValue(100).setRequired(true)),
+  new SlashCommandBuilder().setName("help").setDescription("Show Pookie Play commands")
+].map(command => command.toJSON());
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 const music = createMusic();
+
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
   const rest = new REST({ version: "10" }).setToken(token);
@@ -34,39 +47,87 @@ client.once("ready", async () => {
       : Routes.applicationCommands(clientId);
     await rest.put(route, { body: commands });
     console.log("Slash commands registered.");
-  } catch (e) { console.error("Command registration failed:", e); }
+  } catch (error) { console.error("Command registration failed:", error); }
 });
 
 client.on("interactionCreate", async interaction => {
   if (!interaction.isChatInputCommand()) return;
+  const name = interaction.commandName;
   try {
-    const name = interaction.commandName;
-    if (name === "join") {
+    if (name === "help") {
+      const embed = new EmbedBuilder().setColor(0x9b59b6).setTitle("🎧 Pookie Play — Help")
+        .setDescription("Music controls for your voice channel")
+        .addFields(
+          { name: "Playback", value: "`/play` `/pause` `/resume` `/skip` `/stop`", inline: false },
+          { name: "Queue", value: "`/queue` `/shuffle` `/remove position`", inline: false },
+          { name: "Other", value: "`/nowplaying` `/loop off|track|queue` `/volume 0-100` `/join` `/leave`", inline: false }
+        ).setFooter({ text: "Pookie Play • YouTube search and links" });
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+    if (name === "join" || name === "play") {
       const channel = interaction.member?.voice?.channel;
       if (!channel) return interaction.reply({ content: "আগে একটি voice channel-এ যোগ দাও।", ephemeral: true });
-      music.join(interaction.guildId, channel);
-      return interaction.reply("Pookie Play voice channel-এ যোগ দিয়েছে।");
-    }
-    if (name === "leave") { music.leave(interaction.guildId); return interaction.reply("Voice channel ছেড়েছি।"); }
-    if (name === "play") {
       await interaction.deferReply();
-      const channel = interaction.member?.voice?.channel;
-      if (!channel) return interaction.editReply("আগে একটি voice channel-এ যোগ দাও।");
-      music.join(interaction.guildId, channel);
-      const result = await music.play(interaction.guildId, interaction.options.getString("query", true));
+      await music.join(interaction.guildId, channel);
+      if (name === "join") return interaction.editReply("🎧 Pookie Play voice channel-এ যোগ দিয়েছে।");
+      const result = await music.play(interaction.guildId, interaction.options.getString("query", true), interaction.user.username);
       return interaction.editReply(result);
     }
-    if (name === "pause") { music.pause(interaction.guildId); return interaction.reply("Playback paused."); }
-    if (name === "resume") { music.resume(interaction.guildId); return interaction.reply("Playback resumed."); }
-    if (name === "skip") { music.skip(interaction.guildId); return interaction.reply("Skipped."); }
-    if (name === "stop") { music.stop(interaction.guildId); return interaction.reply("Playback stopped."); }
-    if (name === "queue") return interaction.reply(music.queueText(interaction.guildId));
-    if (name === "volume") { music.volume(interaction.guildId, interaction.options.getInteger("value", true)); return interaction.reply("Volume updated."); }
-  } catch (e) {
-    console.error(e);
-    const msg = "কমান্ডটি চালাতে সমস্যা হয়েছে। Bot permissions ও voice connection পরীক্ষা করো।";
-    if (interaction.deferred || interaction.replied) await interaction.followUp({ content: msg, ephemeral: true }).catch(()=>{});
-    else await interaction.reply({ content: msg, ephemeral: true }).catch(()=>{});
+    if (name === "leave") {
+      music.leave(interaction.guildId);
+      return interaction.reply("👋 Voice channel ছেড়েছি এবং queue বন্ধ করেছি।");
+    }
+    if (name === "pause") {
+      const ok = music.pause(interaction.guildId);
+      return interaction.reply(ok ? "⏸️ গান pause করা হয়েছে।" : "এখন কোনো গান চলছে না।");
+    }
+    if (name === "resume") {
+      const ok = music.resume(interaction.guildId);
+      return interaction.reply(ok ? "▶️ গান আবার চালু হয়েছে।" : "গানটি resume করা যায়নি।");
+    }
+    if (name === "skip") {
+      const ok = music.skip(interaction.guildId);
+      return interaction.reply(ok ? "⏭️ পরের গানে যাচ্ছি।" : "এখন skip করার মতো গান নেই।");
+    }
+    if (name === "stop") {
+      music.stop(interaction.guildId);
+      return interaction.reply("⏹️ Playback বন্ধ এবং queue খালি করা হয়েছে।");
+    }
+    if (name === "queue") {
+      return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x9b59b6).setTitle("🎶 Pookie Play Queue").setDescription(music.queueText(interaction.guildId).slice(0, 4000))] });
+    }
+    if (name === "nowplaying") {
+      const item = music.current(interaction.guildId);
+      if (!item) return interaction.reply("এখন কোনো গান চলছে না।");
+      const embed = new EmbedBuilder().setColor(0x9b59b6).setTitle("🎵 এখন চলছে").setDescription(`**${item.title}**`)
+        .addFields({ name: "Requested by", value: item.requestedBy || "Unknown", inline: true },
+          { name: "Loop", value: music.loop(interaction.guildId), inline: true });
+      return interaction.reply({ embeds: [embed] });
+    }
+    if (name === "shuffle") {
+      const count = music.shuffle(interaction.guildId);
+      return interaction.reply(count > 1 ? `🔀 Queue-এর ${count}টি গান shuffle করা হয়েছে।` : "Shuffle করার মতো পর্যাপ্ত গান নেই।");
+    }
+    if (name === "loop") {
+      const mode = interaction.options.getString("mode", true);
+      music.setLoop(interaction.guildId, mode);
+      return interaction.reply(`🔁 Loop mode: **${mode}**`);
+    }
+    if (name === "remove") {
+      const removed = music.remove(interaction.guildId, interaction.options.getInteger("position", true));
+      return interaction.reply(removed ? `🗑️ **${removed.title}** queue থেকে সরানো হয়েছে।` : "এই position-এ কোনো গান নেই।");
+    }
+    if (name === "volume") {
+      music.volume(interaction.guildId, interaction.options.getInteger("value", true));
+      return interaction.reply("🔊 Volume update করা হয়েছে।");
+    }
+  } catch (error) {
+    console.error(error);
+    const message = error.message?.includes("অন্য voice channel")
+      ? error.message
+      : "কমান্ডটি চালাতে সমস্যা হয়েছে। Bot-এর Connect, Speak এবং Use Application Commands permission পরীক্ষা করো।";
+    if (interaction.deferred || interaction.replied) await interaction.followUp({ content: message, ephemeral: true }).catch(() => {});
+    else await interaction.reply({ content: message, ephemeral: true }).catch(() => {});
   }
 });
 

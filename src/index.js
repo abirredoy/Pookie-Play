@@ -18,6 +18,9 @@ const commands = [
   new SlashCommandBuilder().setName("leave").setDescription("Leave the voice channel"),
   new SlashCommandBuilder().setName("play").setDescription("Play a YouTube URL or search")
     .addStringOption(o => o.setName("query").setDescription("YouTube URL or search terms").setRequired(true)),
+  new SlashCommandBuilder().setName("files").setDescription("List uploaded audio files"),
+  new SlashCommandBuilder().setName("playfile").setDescription("Play an uploaded audio file")
+    .addStringOption(o => o.setName("filename").setDescription("Exact filename from /files").setRequired(true)),
   new SlashCommandBuilder().setName("pause").setDescription("Pause playback"),
   new SlashCommandBuilder().setName("resume").setDescription("Resume playback"),
   new SlashCommandBuilder().setName("skip").setDescription("Skip the current track"),
@@ -58,11 +61,24 @@ client.on("interactionCreate", async interaction => {
       const embed = new EmbedBuilder().setColor(0x9b59b6).setTitle("🎧 Pookie Play — Help")
         .setDescription("Music controls for your voice channel")
         .addFields(
-          { name: "Playback", value: "`/play` `/pause` `/resume` `/skip` `/stop`", inline: false },
+          { name: "Playback", value: "`/play` `/playfile` `/files` `/pause` `/resume` `/skip` `/stop`", inline: false },
           { name: "Queue", value: "`/queue` `/shuffle` `/remove position`", inline: false },
           { name: "Other", value: "`/nowplaying` `/loop off|track|queue` `/volume 0-100` `/join` `/leave`", inline: false }
         ).setFooter({ text: "Pookie Play • YouTube search and links" });
       return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+    if (name === "files") {
+      const files = music.listFiles();
+      const body = files.length ? "🎵 **Available audio files:**\n" + files.map(file => "• `" + file + "`").join("\n") : "এখনো কোনো অডিও ফাইল যোগ করা হয়নি। GitHub-এর assets/audio ফোল্ডারে নিজের বা ব্যবহারের অনুমতি থাকা MP3/OGG/WAV ফাইল যোগ করো।";
+      return interaction.reply(body);
+    }
+    if (name === "playfile") {
+      const channel = interaction.member?.voice?.channel;
+      if (!channel) return interaction.reply({ content: "আগে একটি voice channel-এ যোগ দাও।", ephemeral: true });
+      await interaction.deferReply();
+      await music.join(interaction.guildId, channel);
+      const result = await music.playFile(interaction.guildId, interaction.options.getString("filename", true), interaction.user.username);
+      return interaction.editReply(result);
     }
     if (name === "join" || name === "play") {
       const channel = interaction.member?.voice?.channel;

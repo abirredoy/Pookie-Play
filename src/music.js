@@ -69,6 +69,7 @@ function createMusic() {
       return;
     }
     s.current = item;
+    s.lastError = null;
     try {
       const stream = await play.stream(item.url);
       const resource = createAudioResource(stream.stream, {
@@ -79,8 +80,8 @@ function createMusic() {
       s.player.play(resource);
     } catch (error) {
       console.error("YouTube playback error:", error);
+      s.lastError = error.message || "অজানা অডিও সমস্যা";
       s.current = null;
-      await next(guildId);
     }
   }
 
@@ -126,6 +127,9 @@ function createMusic() {
     s.queue.push(item);
     if (!s.current && ![AudioPlayerStatus.Playing, AudioPlayerStatus.Buffering, AudioPlayerStatus.Paused].includes(s.player.state.status)) {
       await next(guildId);
+      if (s.lastError) {
+        return "⚠️ গানটি Queue-তে যোগ হয়েছে, কিন্তু YouTube অডিও পাওয়া যায়নি। GitHub Actions-এর লগে playback error দেখো।";
+      }
     }
     return `🎵 **${item.title}** queue-তে যোগ হয়েছে।`;
   }
@@ -163,7 +167,7 @@ function createMusic() {
       const s = state(id);
       s.volume = value;
       const resource = s.player.state.resource;
-      if (resource.volume) resource.volume.setVolume(value / 100);
+      if (resource?.volume) resource.volume.setVolume(value / 100);
     },
     shuffle(id) {
       const q = state(id).queue;

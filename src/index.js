@@ -256,10 +256,12 @@ function controlRows(q = {}) {
     new ActionRowBuilder().addComponents(
       button(
         "repeat_cycle",
-        q.repeat === "track" ? "🔂 Repeat Song" :
-          q.repeat === "queue" ? "🔁 Repeat Queue" :
-          q.repeat === "shuffle" ? "🔀 Shuffle Loop" : "➡️ Repeat Off",
-        q.repeat === "off" ? inactive : active
+        q.repeat === "track" ? "🔂 Loop: Song" :
+          q.repeat === "queue" ? "🔁 Loop: Queue" :
+          q.repeat === "shuffle" ? "🔀 Loop: Shuffle" : "➡️ Loop: Off",
+        q.repeat === "track" ? ButtonStyle.Success :
+          q.repeat === "queue" ? ButtonStyle.Primary :
+          q.repeat === "shuffle" ? ButtonStyle.Danger : ButtonStyle.Secondary
       ),
       button("autoplay", "🤖 Auto Mode", q.mode === "auto" ? active : inactive),
       button("queue_mode", "📜 Queue Mode", q.mode === "queue" ? active : inactive)

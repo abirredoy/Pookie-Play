@@ -305,8 +305,17 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
           s.history.unshift(finished);
           s.history = s.history.slice(0, 25);
           if (!s.quickMode) {
-            if (s.repeat === "track") s.queue.unshift(finished);
-            else if (s.repeat === "queue") s.queue.push(finished);
+            if (s.repeat === "track") {
+              s.queue.unshift(finished);
+            } else if (s.repeat === "queue") {
+              s.queue.push(finished);
+            } else if (s.repeat === "shuffle") {
+              s.queue.push(finished);
+              for (let i = s.queue.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [s.queue[i], s.queue[j]] = [s.queue[j], s.queue[i]];
+              }
+            }
             if (s.mode === "auto" && s.repeat !== "track") s.autoSimilarTo = finished;
           }
         }
@@ -346,7 +355,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
             s.queue = [];
             console.log("[Quick Mode] Playlist finished.");
           }
-        } else if (s.mode === "auto" || s.queue.length > 0 || s.repeat === "track" || s.repeat === "queue") {
+        } else if (s.mode === "auto" || s.queue.length > 0 || s.repeat === "track" || s.repeat === "queue" || s.repeat === "shuffle") {
           playNext(guildId).catch(console.error);
         }
       }
@@ -736,6 +745,11 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
         }
       } else if (s.quickMode) {
         s.quickOrder = Object.keys(s.quickSlots).map(Number).sort((a,b)=>a-b);
+      } else if (s.repeat === "shuffle") {
+        for (let i = s.queue.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [s.queue[i], s.queue[j]] = [s.queue[j], s.queue[i]];
+        }
       }
       return s.repeat;
     },

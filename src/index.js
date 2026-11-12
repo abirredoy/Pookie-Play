@@ -369,10 +369,12 @@ client.on("interactionCreate", async interaction => {
       await interaction.deferUpdate();
       let result;
       let success = false;
+      let actionError = "";
       try {
         result = await action();
         success = ["repeat_cycle", "auto_toggle", "list_toggle", "volume_down", "volume_up", "leave"].includes(id) ? true : result !== false;
       } catch (error) {
+        actionError = String(error?.message || error || "Unknown error");
         console.error("[Player button] Action failed:", id, error);
       }
       const labels = {
@@ -392,7 +394,7 @@ client.on("interactionCreate", async interaction => {
         vol75: "Volume: 75%", vol100: "Volume: 100%", leave: "Disconnected from voice channel"
       };
       const q = music.getQueue(interaction.guildId);
-      const status = success ? (labels[id] || "Action completed") : (id === "random_next" ? "No random track found — check Lavalink/search source" : "Action failed — check voice connection or queue");
+      const status = success ? (labels[id] || "Action completed") : (actionError || (id === "random_next" ? "No random track found — check Lavalink/search source" : "Action failed — check voice connection or queue"));
       const embed = interaction.message.embeds[0]
         ? EmbedBuilder.from(interaction.message.embeds[0])
         : new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play");

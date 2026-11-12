@@ -30,7 +30,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
   const get = (id) => {
     if (!states.has(id)) states.set(id, {
       player: null, queue: [], current: null, lastPlayed: null, currentQuery: "", fallbackTried: false, volume: 70,
-      muted: false, previousVolume: 70, textChannelId: null, mode: "off", repeat: "off", history: [], seedIndex: 0, busy: false, recovering: false
+      muted: false, paused: false, previousVolume: 70, textChannelId: null, mode: "off", repeat: "off", history: [], seedIndex: 0, busy: false, recovering: false
     });
     return states.get(id);
   };
@@ -129,6 +129,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       console.log("[Music] Using Lavalink node:", s.player.node?.name || "unknown");
       console.log("[Music] Starting:", track.info?.title || "untitled", "| source:", track.info?.sourceName || "unknown");
       await s.player.playTrack({ track: { encoded: track.encoded } });
+      s.paused = false;
       await s.player.setGlobalVolume(s.volume);
       return true;
     } catch (error) {
@@ -298,12 +299,14 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       const s = get(id);
       if (!s.player || !s.current) return false;
       await s.player.setPaused(true);
+      s.paused = true;
       return true;
     },
     async resume(id) {
       const s = get(id);
       if (!s.player || !s.current) return false;
       await s.player.setPaused(false);
+      s.paused = false;
       return true;
     },
     async skip(id) {
@@ -413,7 +416,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     },
     getQueue(id) {
       const s = get(id);
-      return { current: s.current?.info || null, tracks: s.queue.map(t => t.info), mode: s.mode, repeat: s.repeat, volume: s.volume, history: s.history.map(t => t.info) };
+      return { current: s.current?.info || null, tracks: s.queue.map(t => t.info), mode: s.mode, repeat: s.repeat, volume: s.volume, muted: s.muted, paused: s.paused, history: s.history.map(t => t.info) };
     }
   };
 }

@@ -467,7 +467,6 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     async randomNext(id) {
       const s = get(id);
       if (!s.player) return false;
-      const reference = s.current || s.lastPlayed;
       const candidate = await findRandomTrack(s);
       if (!candidate) return false;
       if (s.current) {
@@ -475,7 +474,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
         s.history = s.history.slice(0, 25);
         s.lastPlayed = s.current;
       }
-      s.queue = [candidate];
+      s.queue.unshift(candidate);
       if (s.current) await s.player.stopTrack();
       s.current = null;
       return playNext(id);

@@ -22,17 +22,6 @@ const commands = [
     .addStringOption(o => o.setName("query").setDescription("Song name or YouTube/SoundCloud link").setRequired(true)),
   new SlashCommandBuilder().setName("player").setDescription("Show music player controls"),
   new SlashCommandBuilder().setName("queue").setDescription("Show the music queue"),
-  new SlashCommandBuilder().setName("mode").setDescription("Set automatic music discovery mode")
-    .addStringOption(o => o.setName("type").setDescription("Choose an autoplay style").setRequired(true)
-      .addChoices(
-        { name: "Viral / Popular", value: "viral" },
-        { name: "Bangladesh Trending", value: "bangla" },
-        { name: "Global Trending", value: "global" },
-        { name: "Bangla + Global Mix", value: "mixed" },
-        { name: "Off", value: "off" }
-      )),
-  new SlashCommandBuilder().setName("autoplay").setDescription("Turn automatic music selection on or off")
-    .addBooleanOption(o => o.setName("enabled").setDescription("Enable autoplay").setRequired(true)),
   new SlashCommandBuilder().setName("pause").setDescription("Pause playback"),
   new SlashCommandBuilder().setName("resume").setDescription("Resume playback"),
   new SlashCommandBuilder().setName("skip").setDescription("Skip the current track"),
@@ -153,7 +142,6 @@ client.on("interactionCreate", async interaction => {
         .setDescription("শুধু লিংক দাও। বট একই লিংক থেকে playable audio চালানোর চেষ্টা করবে; গানের নাম দিয়ে search করে না।")
         .addFields(
           { name: "Music", value: "/play query — গান চালাও\n/queue — Queue দেখো\n/join /leave — Voice control", inline: false },
-          { name: "Autoplay", value: "/mode viral | bangla | global | mixed | off\n/autoplay enabled:true|false", inline: false },
           { name: "Controls", value: "/pause /resume /skip /stop /volume value এবং Player buttons", inline: false }
         ).setFooter({ text: "YouTube playback may still be limited by YouTube availability or regional restrictions." });
       return interaction.reply({ embeds: [embed], ephemeral: true });
@@ -186,24 +174,6 @@ client.on("interactionCreate", async interaction => {
     if (name === "leave") {
       await music.leave(interaction.guildId);
       return interaction.reply("👋 Voice channel ছেড়েছি।");
-    }
-
-    if (name === "mode") {
-      const mode = interaction.options.getString("type", true);
-      music.setMode(interaction.guildId, mode);
-      const labels = { viral: "Viral / Popular", bangla: "Bangladesh Trending", global: "Global Trending", mixed: "Bangla + Global Mix", off: "Off" };
-      return interaction.reply(mode === "off"
-        ? "⚪ Autoplay বন্ধ করা হয়েছে।"
-        : "🎧 Autoplay mode: **" + labels[mode] + "**। Queue খালি হলে এই ধরনের গান নিজে থেকে খুঁজে চালাবে।");
-    }
-
-    if (name === "autoplay") {
-      const enabled = interaction.options.getBoolean("enabled", true);
-      if (enabled && music.getMode(interaction.guildId) === "off") music.setMode(interaction.guildId, "mixed");
-      if (!enabled) music.setMode(interaction.guildId, "off");
-      return interaction.reply(enabled
-        ? "🔁 Autoplay চালু। বর্তমান mode: " + music.getMode(interaction.guildId)
-        : "⏹️ Autoplay বন্ধ।");
     }
 
     if (name === "queue") {

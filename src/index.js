@@ -1,19 +1,29 @@
 require("dotenv").config();
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const {
+  Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder,
+  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle
+} = require("discord.js");
 const express = require("express");
+const { Shoukaku, Connectors } = require("shoukaku");
 const { createMusic } = require("./music");
+
 const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.CLIENT_ID;
-if (!token || !clientId) { console.error("Missing DISCORD_TOKEN or CLIENT_ID."); process.exit(1); }
+const lavalinkPassword = process.env.LAVALINK_PASSWORD;
+if (!token || !clientId || !lavalinkPassword) {
+  console.error("Missing DISCORD_TOKEN, CLIENT_ID, or LAVALINK_PASSWORD.");
+  process.exit(1);
+}
 
 const commands = [
   new SlashCommandBuilder().setName("join").setDescription("Join your voice channel"),
   new SlashCommandBuilder().setName("leave").setDescription("Leave the voice channel"),
-  new SlashCommandBuilder().setName("play").setDescription("Search Spotify or open a Spotify link")
-    .addStringOption(o => o.setName("query").setDescription("Song name, artist, or Spotify link").setRequired(true)),
+  new SlashCommandBuilder().setName("play").setDescription("Play a song from YouTube or SoundCloud")
+    .addStringOption(o => o.setName("query").setDescription("Song name or YouTube/SoundCloud link").setRequired(true)),
   new SlashCommandBuilder().setName("player").setDescription("Show music player controls"),
-  new SlashCommandBuilder().setName("mode").setDescription("Choose Spotify music discovery mode")
-    .addStringOption(o => o.setName("type").setDescription("Choose a music discovery mode").setRequired(true)
+  new SlashCommandBuilder().setName("queue").setDescription("Show the music queue"),
+  new SlashCommandBuilder().setName("mode").setDescription("Set automatic music discovery mode")
+    .addStringOption(o => o.setName("type").setDescription("Choose an autoplay style").setRequired(true)
       .addChoices(
         { name: "Viral / Popular", value: "viral" },
         { name: "Bangladesh Trending", value: "bangla" },
@@ -21,80 +31,57 @@ const commands = [
         { name: "Bangla + Global Mix", value: "mixed" },
         { name: "Off", value: "off" }
       )),
+  new SlashCommandBuilder().setName("autoplay").setDescription("Turn automatic music selection on or off")
+    .addBooleanOption(o => o.setName("enabled").setDescription("Enable autoplay").setRequired(true)),
   new SlashCommandBuilder().setName("pause").setDescription("Pause playback"),
   new SlashCommandBuilder().setName("resume").setDescription("Resume playback"),
   new SlashCommandBuilder().setName("skip").setDescription("Skip the current track"),
-  new SlashCommandBuilder().setName("stop").setDescription("Stop playback"),
+  new SlashCommandBuilder().setName("stop").setDescription("Stop playback and clear the queue"),
   new SlashCommandBuilder().setName("volume").setDescription("Set volume")
     .addIntegerOption(o => o.setName("value").setDescription("0 to 100").setMinValue(0).setMaxValue(100).setRequired(true)),
   new SlashCommandBuilder().setName("help").setDescription("Show Pookie Play commands")
 ].map(command => command.toJSON());
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
-const music = createMusic();
-const guildModes = new Map();
-const MODE_SEARCHES = {
-  viral: [
-    "Spotify Viral 50 Global playlist",
-    "Spotify most streamed hits 2026",
-    "Spotify trending popular songs"
-  ],
-  bangla: [
-    "Spotify Bangladesh Top 50 playlist",
-    "Bangla viral trending songs",
-    "Bangladesh popular hits"
-  ],
-  global: [
-    "Spotify Global Top 50 playlist",
-    "Spotify Viral 50 Global playlist",
-    "Today's Top Hits Spotify"
-  ],
-  mixed: [
-    "Bangladesh Top 50 Spotify playlist",
-    "Global Top 50 Spotify playlist",
-    "Bangla and international viral hits"
-  ]
-};
-const MODE_LABELS = {
-  viral: "Viral / Popular",
-  bangla: "Bangladesh Trending",
-  global: "Global Trending",
-  mixed: "Bangla + Global Mix"
-};
+const shoukaku = new Shoukaku(new Connectors.DiscordJS(client), [{
+  name: "Pookie-Lavalink",
+  url: process.env.LAVALINK_HOST || "127.0.0.1:2333",
+  auth: lavalinkPassword,
+  secure: false
+}]);
+shoukaku.on("ready", name => console.log("[Lavalink] Connected:", name));
+shoukaku.on("error", (name, error) => console.error("[Lavalink] Error:", name, error));
+shoukaku.on("close", (name, code, reason) => console.warn("[Lavalink] Closed:", name, code, reason));
+const music = createMusic(shoukaku);
 
-function spotifySearchUrl(query) {
-  const value = query.trim();
-  const uriMatch = value.match(/^spotify:(track|album|playlist|artist):([a-zA-Z0-9]+)$/);
-  if (uriMatch) return "https://open.spotify.com/" + uriMatch[1] + "/" + uriMatch[2];
-  try {
-    const parsed = new URL(value);
-    if (parsed.hostname === "open.spotify.com" || parsed.hostname === "spotify.com" || parsed.hostname.endsWith(".spotify.com")) return parsed.toString();
-  } catch (_) {}
-  return "https://open.spotify.com/search/" + encodeURIComponent(value);
+function controlRows() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("pookie_pause").setLabel("Pause").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("pookie_resume").setLabel("Resume").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("pookie_skip").setLabel("Skip").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("pookie_stop").setLabel("Stop").setStyle(ButtonStyle.Danger)
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("pookie_volume_down").setLabel("Volume -").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("pookie_volume_up").setLabel("Volume +").setStyle(ButtonStyle.Secondary)
+    )
+  ];
 }
 
-function controlRows(searchUrl) {
-  const firstButtons = [];
-  if (searchUrl) firstButtons.push(new ButtonBuilder().setLabel("Open Spotify").setStyle(ButtonStyle.Link).setURL(searchUrl));
-  firstButtons.push(
-    new ButtonBuilder().setCustomId("pookie_pause").setLabel("Pause").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("pookie_resume").setLabel("Resume").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId("pookie_skip").setLabel("Skip").setStyle(ButtonStyle.Primary)
-  );
-  const first = new ActionRowBuilder().addComponents(...firstButtons);
-  const second = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("pookie_stop").setLabel("Stop").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId("pookie_volume_down").setLabel("Volume -").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("pookie_volume_up").setLabel("Volume +").setStyle(ButtonStyle.Secondary)
-  );
-  return [first, second];
+async function requireVoice(interaction) {
+  const channel = interaction.member?.voice?.channel;
+  if (!channel) throw new Error("আগে একটি voice channel-এ যোগ দাও।");
+  return channel;
 }
 
 client.once("ready", async () => {
   console.log("Logged in as " + client.user.tag);
   const rest = new REST({ version: "10" }).setToken(token);
   try {
-    const route = process.env.GUILD_ID ? Routes.applicationGuildCommands(clientId, process.env.GUILD_ID) : Routes.applicationCommands(clientId);
+    const route = process.env.GUILD_ID
+      ? Routes.applicationGuildCommands(clientId, process.env.GUILD_ID)
+      : Routes.applicationCommands(clientId);
     await rest.put(route, { body: commands });
     console.log("Slash commands registered.");
   } catch (error) { console.error("Command registration failed:", error); }
@@ -103,90 +90,122 @@ client.once("ready", async () => {
 client.on("interactionCreate", async interaction => {
   try {
     if (interaction.isButton()) {
+      if (!interaction.guildId) return;
+      if (interaction.customId === "pookie_volume_down" || interaction.customId === "pookie_volume_up") {
+        const value = await music.adjustVolume(interaction.guildId, interaction.customId === "pookie_volume_up" ? 10 : -10);
+        return interaction.reply({ content: "🔊 Volume: " + value + "%", ephemeral: true });
+      }
       const actions = {
         pookie_pause: () => music.pause(interaction.guildId),
         pookie_resume: () => music.resume(interaction.guildId),
         pookie_skip: () => music.skip(interaction.guildId),
         pookie_stop: () => music.stop(interaction.guildId)
       };
-      if (interaction.customId === "pookie_volume_down" || interaction.customId === "pookie_volume_up") {
-        const value = music.adjustVolume(interaction.guildId, interaction.customId === "pookie_volume_up" ? 10 : -10);
-        return interaction.reply({ content: "🔊 Volume: " + value + "%", ephemeral: true });
-      }
       const action = actions[interaction.customId];
       if (!action) return;
-      const ok = action();
+      const ok = await action();
       const messages = {
-        pookie_pause: ok ? "⏸️ Playback pause করা হয়েছে।" : "এখন pause করার মতো কোনো অডিও চলছে না।",
-        pookie_resume: ok ? "▶️ Playback resume করা হয়েছে।" : "এখন resume করার মতো কোনো অডিও নেই।",
-        pookie_skip: ok ? "⏭️ বর্তমান ট্র্যাক skip করা হয়েছে।" : "এখন skip করার মতো কোনো ট্র্যাক নেই।",
-        pookie_stop: ok ? "⏹️ Playback বন্ধ করা হয়েছে।" : "এখন কোনো অডিও চলছে না।"
+        pookie_pause: "⏸️ গান pause করা হয়েছে।",
+        pookie_resume: "▶️ গান resume করা হয়েছে।",
+        pookie_skip: "⏭️ পরের গান চালানোর চেষ্টা করছি।",
+        pookie_stop: "⏹️ গান ও queue বন্ধ করা হয়েছে।"
       };
-      return interaction.reply({ content: messages[interaction.customId], ephemeral: true });
+      return interaction.reply({ content: ok ? messages[interaction.customId] : "এখন কোনো গান চলছে না।", ephemeral: true });
     }
+
     if (!interaction.isChatInputCommand()) return;
     const name = interaction.commandName;
+
     if (name === "help") {
-      const embed = new EmbedBuilder().setColor(0x1db954).setTitle("🎧 Pookie Play — Help")
-        .setDescription("Spotify search and player controls")
+      const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play — Help")
+        .setDescription("YouTube প্রথমে চেষ্টা করবে; না পেলে SoundCloud-এ খুঁজবে।")
         .addFields(
-          { name: "Spotify", value: "/play query — গান খোঁজো বা Spotify লিংক খোলো\n/mode viral | bangla | global | mixed | off — মিউজিক ডিসকভারি মোড", inline: false },
-          { name: "Player controls", value: "/player অথবা প্লেয়ারের বাটন — Pause, Resume, Skip, Stop, Volume", inline: false },
-          { name: "Voice", value: "/join /leave", inline: false }
-        ).setFooter({ text: "Spotify search/link only — Spotify audio is not streamed in Discord." });
+          { name: "Music", value: "/play query — গান চালাও\n/queue — Queue দেখো\n/join /leave — Voice control", inline: false },
+          { name: "Autoplay", value: "/mode viral | bangla | global | mixed | off\n/autoplay enabled:true|false", inline: false },
+          { name: "Controls", value: "/pause /resume /skip /stop /volume value এবং Player buttons", inline: false }
+        ).setFooter({ text: "YouTube playback may still be limited by YouTube availability or regional restrictions." });
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
+
     if (name === "play") {
       const query = interaction.options.getString("query", true);
-      const url = spotifySearchUrl(query);
-      const embed = new EmbedBuilder().setColor(0x1db954).setTitle("🎵 Spotify Search")
-        .setDescription("[Spotify-তে খুলুন / সার্চ করুন](" + url + ")\n\n**সার্চ:** " + query.slice(0, 250))
-        .addFields({ name: "মিউজিক প্লেয়ার", value: "নিচের বাটনগুলো দিয়ে চলমান অডিও নিয়ন্ত্রণ করা যাবে। Spotify-এর অডিও সরাসরি Discord voice-এ বাজানো যাবে না।" });
-      return interaction.reply({ embeds: [embed], components: controlRows(url) });
+      const channel = await requireVoice(interaction);
+      await interaction.deferReply();
+      const result = await music.play(interaction.guildId, channel, query);
+      const info = result.track.info;
+      const embed = new EmbedBuilder().setColor(0x5865f2)
+        .setTitle(result.queued ? "➕ Queue-তে যোগ হয়েছে" : "🎶 এখন বাজছে")
+        .setDescription("**" + (info.title || query).slice(0, 240) + "**\n" + (info.author || "Unknown artist"))
+        .addFields(
+          { name: "Source", value: info.sourceName || "Audio source", inline: true },
+          { name: "Queue", value: String(result.queueLength), inline: true }
+        );
+      if (info.uri) embed.setURL(info.uri);
+      return interaction.editReply({ embeds: [embed], components: controlRows() });
     }
-    if (name === "mode") {
-      const selected = interaction.options.getString("type", true);
-      if (selected === "off") {
-        guildModes.delete(interaction.guildId);
-        return interaction.reply("⚪ Spotify discovery mode বন্ধ করা হয়েছে।");
-      }
-      guildModes.set(interaction.guildId, selected);
-      const searches = MODE_SEARCHES[selected] || MODE_SEARCHES.mixed;
-      const links = searches.map((term, index) => {
-        const url = spotifySearchUrl(term);
-        return (index + 1) + ". [" + term + "](" + url + ")";
-      });
-      const embed = new EmbedBuilder().setColor(0x1db954)
-        .setTitle("🎧 Pookie Play — " + MODE_LABELS[selected] + " Mode")
-        .setDescription("এই সার্ভারের Spotify discovery mode সেট হয়েছে।\n\n" + links.join("\\n"))
-        .setFooter({ text: "Search links only; Spotify audio does not play inside Discord voice." });
-      return interaction.reply({ embeds: [embed] });
-    }
-    if (name === "player") {
-      const embed = new EmbedBuilder().setColor(0x1db954).setTitle("🎧 Pookie Play Player")
-        .setDescription("নিচের বাটন দিয়ে চলমান অডিও নিয়ন্ত্রণ করো। Spotify search/link আলাদা /play কমান্ডে।");
-      return interaction.reply({ embeds: [embed], components: controlRows(null) });
-    }
-    if (name === "join" || name === "leave") {
-      if (name === "leave") { music.leave(interaction.guildId); return interaction.reply("👋 Voice channel ছেড়েছি।"); }
-      const channel = interaction.member?.voice?.channel;
-      if (!channel) return interaction.reply({ content: "আগে একটি voice channel-এ যোগ দাও।", ephemeral: true });
+
+    if (name === "join") {
+      const channel = await requireVoice(interaction);
       await interaction.deferReply();
       await music.join(interaction.guildId, channel);
       return interaction.editReply("🎧 Pookie Play voice channel-এ যোগ দিয়েছে।");
     }
-    if (name === "pause" || name === "resume" || name === "skip" || name === "stop") {
-      const ok = name === "pause" ? music.pause(interaction.guildId) : name === "resume" ? music.resume(interaction.guildId) : name === "skip" ? music.skip(interaction.guildId) : music.stop(interaction.guildId);
-      return interaction.reply(ok ? "✅ কমান্ডটি সম্পন্ন হয়েছে।" : "এখন কোনো অডিও চলছে না।");
+
+    if (name === "leave") {
+      await music.leave(interaction.guildId);
+      return interaction.reply("👋 Voice channel ছেড়েছি।");
     }
+
+    if (name === "mode") {
+      const mode = interaction.options.getString("type", true);
+      music.setMode(interaction.guildId, mode);
+      const labels = { viral: "Viral / Popular", bangla: "Bangladesh Trending", global: "Global Trending", mixed: "Bangla + Global Mix", off: "Off" };
+      return interaction.reply(mode === "off"
+        ? "⚪ Autoplay বন্ধ করা হয়েছে।"
+        : "🎧 Autoplay mode: **" + labels[mode] + "**। Queue খালি হলে এই ধরনের গান নিজে থেকে খুঁজে চালাবে।");
+    }
+
+    if (name === "autoplay") {
+      const enabled = interaction.options.getBoolean("enabled", true);
+      if (enabled && music.getMode(interaction.guildId) === "off") music.setMode(interaction.guildId, "mixed");
+      if (!enabled) music.setMode(interaction.guildId, "off");
+      return interaction.reply(enabled
+        ? "🔁 Autoplay চালু। বর্তমান mode: " + music.getMode(interaction.guildId)
+        : "⏹️ Autoplay বন্ধ।");
+    }
+
+    if (name === "queue") {
+      const data = music.getQueue(interaction.guildId);
+      const current = data.current ? "**এখন বাজছে:** " + data.current.title : "এখন কিছু বাজছে না।";
+      const upcoming = data.tracks.slice(0, 10).map((t, i) => (i + 1) + ". " + t.title).join("\n");
+      const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎵 Pookie Play Queue")
+        .setDescription(current + (upcoming ? "\n\n**পরের গানগুলো:**\n" + upcoming : "\n\nQueue খালি।"))
+        .setFooter({ text: "Autoplay: " + data.mode });
+      return interaction.reply({ embeds: [embed] });
+    }
+
+    if (name === "player") {
+      const data = music.getQueue(interaction.guildId);
+      const title = data.current?.title || "কোনো গান চলছে না";
+      const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play Player")
+        .setDescription("**" + title + "**\nAutoplay: " + data.mode);
+      return interaction.reply({ embeds: [embed], components: controlRows() });
+    }
+
+    if (["pause", "resume", "skip", "stop"].includes(name)) {
+      const ok = await music[name](interaction.guildId);
+      const labels = { pause: "Pause", resume: "Resume", skip: "Skip", stop: "Stop" };
+      return interaction.reply(ok ? "✅ " + labels[name] + " সম্পন্ন হয়েছে।" : "এখন কোনো গান চলছে না।");
+    }
+
     if (name === "volume") {
       const value = interaction.options.getInteger("value", true);
-      music.volume(interaction.guildId, value);
-      return interaction.reply("🔊 Volume: " + value + "%");
+      const actual = await music.volume(interaction.guildId, value);
+      return interaction.reply("🔊 Volume: " + actual + "%");
     }
   } catch (error) {
-    console.error(error);
-    const message = error.message?.includes("অন্য voice channel") ? error.message : "কমান্ডটি চালাতে সমস্যা হয়েছে। Bot-এর Connect, Speak এবং Use Application Commands permission পরীক্ষা করো।";
+    console.error("[Interaction]", error);
+    const message = error.message || "কমান্ডটি চালাতে সমস্যা হয়েছে।";
     if (interaction.deferred || interaction.replied) await interaction.followUp({ content: message, ephemeral: true }).catch(() => {});
     else await interaction.reply({ content: message, ephemeral: true }).catch(() => {});
   }
@@ -198,7 +217,8 @@ app.use(express.static("public"));
 app.get("/api/status", (_req, res) => res.json({
   bot: client.isReady() ? client.user.tag : "Offline",
   connectedGuilds: client.guilds.cache.size,
-  note: "Spotify search/link only. Spotify audio is not streamed in Discord."
+  lavalinkNodes: [...shoukaku.nodes.values()].map(n => ({ name: n.name, state: n.state })),
+  playback: "YouTube search/playback with SoundCloud fallback"
 }));
 app.listen(Number(process.env.PORT || 3000), () => console.log("Dashboard listening."));
-client.login(token);
+client.login(token).catch(error => { console.error("Discord login failed:", error); process.exit(1); });

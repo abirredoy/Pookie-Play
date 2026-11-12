@@ -31,7 +31,10 @@ async function getRuns(token) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     console.error("[Pookie API] GitHub runs request failed:", response.status, data.message || "");
-    throw new Error("GitHub API returned HTTP " + response.status);
+    const error = new Error("GitHub API returned HTTP " + response.status);
+    error.githubStatus = response.status;
+    error.githubMessage = typeof data.message === "string" ? data.message : "";
+    throw error;
   }
   return Array.isArray(data.workflow_runs) ? data.workflow_runs : [];
 }
@@ -57,7 +60,7 @@ async function status(request, env) {
     });
   } catch (error) {
     console.error("[Pookie API] Status error:", error.message);
-    return json({ state: "unknown", active: false, message: "GitHub থেকে বটের অবস্থা পাওয়া যাচ্ছে না। Worker Logs পরীক্ষা করো।" }, 502);
+    return json({ state: "unknown", active: false, message: "GitHub API error", githubStatus: error.githubStatus || null, detail: error.githubMessage || "Network/request failed" }, 502);
   }
 }
 

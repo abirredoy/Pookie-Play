@@ -60,6 +60,7 @@ const commands = [
   new SlashCommandBuilder().setName("controlrole").setDescription("Choose the role allowed to control Pookie Play")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addRoleOption(o => o.setName("role").setDescription("Role allowed to control the bot").setRequired(true)),
+  new SlashCommandBuilder().setName("dashboard").setDescription("Open the Pookie Play music dashboard"),
   new SlashCommandBuilder().setName("help").setDescription("Show Pookie Play commands")
 ].map(command => command.toJSON());
 
@@ -384,6 +385,16 @@ client.on("interactionCreate", async interaction => {
     }
     if (!interaction.isChatInputCommand()) return;
     const name = interaction.commandName;
+
+    if (name === "dashboard") {
+      const embed = new EmbedBuilder().setColor(0x5865f2)
+        .setTitle("🎛️ Pookie Play — Music Dashboard")
+        .setDescription("মিউজিক বটের Control Panel খুলতে নিচের বাটনে ক্লিক করো।\\n\\n**Dashboard:** গান ও বটের কন্ট্রোল প্যানেল");
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setLabel("🎵 Open Music Dashboard").setStyle(ButtonStyle.Link).setURL("https://script.google.com/macros/s/AKfycbzXzjqmb3XpOX45KDlIWarLwGJb9fkLZuBi9APK1IUgq4A97gqbR1PhvAbvE6PhleLu/exec")
+      );
+      return interaction.reply({ embeds: [embed], components: [row] });
+    }
 
     if (name === "help") {
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play — Help")

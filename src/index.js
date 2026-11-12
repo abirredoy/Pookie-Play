@@ -254,9 +254,13 @@ function controlRows(q = {}) {
       button("shuffle", "🔀 Shuffle"), button("clearqueue", "🧹 Clear Queue", ButtonStyle.Danger)
     ),
     new ActionRowBuilder().addComponents(
-      button("repeat_off", "➡️ Repeat Off", inactive),
-      button("repeat_track", "🔂 Repeat Song", q.repeat === "track" ? active : inactive),
-      button("repeat_queue", "🔁 Repeat Queue", q.repeat === "queue" ? active : inactive),
+      button(
+        "repeat_cycle",
+        q.repeat === "track" ? "🔂 Repeat Song" :
+          q.repeat === "queue" ? "🔁 Repeat Queue" :
+          q.repeat === "shuffle" ? "🔀 Shuffle Loop" : "➡️ Repeat Off",
+        q.repeat === "off" ? inactive : active
+      ),
       button("autoplay", "🤖 Auto Mode", q.mode === "auto" ? active : inactive),
       button("queue_mode", "📜 Queue Mode", q.mode === "queue" ? active : inactive)
     ),
@@ -333,9 +337,11 @@ client.on("interactionCreate", async interaction => {
         mute: () => music.toggleMute(interaction.guildId),
         shuffle: () => music.shuffle(interaction.guildId),
         clearqueue: () => music.clearQueue(interaction.guildId),
-        repeat_off: () => music.setRepeat(interaction.guildId, "off"),
-        repeat_track: () => music.setRepeat(interaction.guildId, "track"),
-        repeat_queue: () => music.setRepeat(interaction.guildId, "queue"),
+        repeat_cycle: () => {
+          const order = ["off", "track", "queue", "shuffle"];
+          const current = order.indexOf(data.repeat || "off");
+          return music.setRepeat(interaction.guildId, order[(current + 1) % order.length]);
+        },
         autoplay: () => music.setMode(interaction.guildId, data.mode === "auto" ? "queue" : "auto"),
         queue_mode: () => music.setMode(interaction.guildId, data.mode === "queue" ? "auto" : "queue"),
         random_next: () => music.randomNext(interaction.guildId),
@@ -355,7 +361,7 @@ client.on("interactionCreate", async interaction => {
       let success = false;
       try {
         result = await action();
-        success = ["shuffle", "clearqueue", "repeat_off", "repeat_track", "repeat_queue", "autoplay", "queue_mode", "volume_down", "volume_up", "mute", "vol25", "vol50", "vol75", "vol100", "leave"].includes(id)
+        success = ["shuffle", "clearqueue", "repeat_cycle", "autoplay", "queue_mode", "volume_down", "volume_up", "mute", "vol25", "vol50", "vol75", "vol100", "leave"].includes(id)
           ? true : result !== false;
       } catch (error) {
         console.error("[Player button] Action failed:", id, error);
@@ -367,7 +373,7 @@ client.on("interactionCreate", async interaction => {
         volume_up: "Volume: " + (result?.before ?? "?") + "% → " + (result?.after ?? "?") + "%",
         mute: result?.muted ? "Mute: ON" : "Mute: OFF",
         shuffle: "Queue shuffled", clearqueue: "Upcoming queue cleared",
-        repeat_off: "Repeat: OFF", repeat_track: "Repeat: SONG", repeat_queue: "Repeat: QUEUE",
+        repeat_cycle: "Repeat: " + ({off:"OFF",track:"SONG",queue:"QUEUE",shuffle:"SHUFFLE"}[result] || "OFF"),
         autoplay: result === "auto" ? "Auto Mode: ON • Queue Mode: OFF" : "Auto Mode: OFF • Queue Mode: ON",
         queue_mode: result === "queue" ? "Queue Mode: ON • Auto Mode: OFF" : "Queue Mode: OFF • Auto Mode: ON",
         random_next: "Random related track selected",

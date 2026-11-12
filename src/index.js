@@ -256,7 +256,8 @@ function controlRows(q = {}) {
         q.repeat === "off" ? ButtonStyle.Secondary : ButtonStyle.Success)
     ),
     new ActionRowBuilder().addComponents(
-      button("mode_toggle", q.listMode ? "📜 List Mode: ON" : "🤖 Auto Mode: ON", q.listMode ? ButtonStyle.Success : ButtonStyle.Primary),
+      button("auto_toggle", q.mode === "auto" ? "🤖 Auto Mode: ON" : "🤖 Auto Mode: OFF", q.mode === "auto" ? ButtonStyle.Success : ButtonStyle.Secondary),
+      button("list_toggle", q.listMode ? "📜 List Mode: ON" : "📜 List Mode: OFF", q.listMode ? ButtonStyle.Success : ButtonStyle.Secondary),
       button("random_next", "🎲 Random Play", ButtonStyle.Primary)
     )
   ];
@@ -339,9 +340,8 @@ client.on("interactionCreate", async interaction => {
           const current = order.indexOf(data.repeat || "off");
           return music.setRepeat(interaction.guildId, order[(current + 1) % order.length]);
         },
-        mode_toggle: async () => data.listMode
-          ? (await music.setListMode(interaction.guildId, false), "auto")
-          : (await music.setListMode(interaction.guildId, true), "list"),
+        auto_toggle: () => music.setMode(interaction.guildId, data.mode === "auto" ? "queue" : "auto"),
+        list_toggle: async () => (await music.setListMode(interaction.guildId, !data.listMode), !data.listMode),
         random_next: () => music.randomNext(interaction.guildId)
       };
       const action = simpleActions[id];
@@ -351,7 +351,7 @@ client.on("interactionCreate", async interaction => {
       let success = false;
       try {
         result = await action();
-        success = ["repeat_cycle", "mode_toggle", "volume_down", "volume_up"].includes(id) ? true : result !== false;
+        success = ["repeat_cycle", "auto_toggle", "list_toggle", "volume_down", "volume_up"].includes(id) ? true : result !== false;
       } catch (error) {
         console.error("[Player button] Action failed:", id, error);
       }
@@ -363,7 +363,8 @@ client.on("interactionCreate", async interaction => {
         mute: result?.muted ? "Mute: ON" : "Mute: OFF",
         shuffle: "Queue shuffled", clearqueue: "Upcoming queue cleared",
         repeat_cycle: "Loop: " + ({off:"OFF",track:"SONG",queue:"LIST",shuffle:"MIX"}[result] || "OFF"),
-        mode_toggle: result === "list" ? "List Mode: ON • Auto Mode: OFF" : "Auto Mode: ON • List Mode: OFF",
+        auto_toggle: result === "auto" ? "Auto Mode: ON" : "Auto Mode: OFF",
+        list_toggle: result ? "List Mode: ON" : "List Mode: OFF",
         random_next: "Random track selected",
         seek_back: "Seeked back 10 seconds", seek_forward: "Seeked forward 10 seconds",
         restart: "Track restarted", vol25: "Volume: 25%", vol50: "Volume: 50%",

@@ -36,6 +36,7 @@ function createMusic(shoukaku) {
       if (!s.queue.length && s.mode !== "off") {
         const seeds = MODE_SEEDS[s.mode] || MODE_SEEDS.mixed;
         const query = seeds[s.seedIndex++ % seeds.length];
+        s.currentQuery = query;
         const tracks = await resolve(query, s.player.node);
         if (tracks.length) s.queue.push(tracks[0]);
       }

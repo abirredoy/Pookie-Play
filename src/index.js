@@ -260,7 +260,7 @@ function controlRows(q = {}) {
       button("leave", "🚪 Leave Voice", ButtonStyle.Danger)
     ),
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setLabel("🎛️ Control Panel").setStyle(ButtonStyle.Link).setURL("https://script.google.com/macros/s/AKfycbzXzjqmb3XpOX45KDlIWarLwGJb9fkLZuBi9APK1IUgq4A97gqbR1PhvAbvE6PhleLu/exec")
+      new ButtonBuilder().setLabel("🎛️ Control Panel").setStyle(ButtonStyle.Link).setURL("https://script.google.com/macros/s/AKfycbzZzyBdTo3IuxibrT7tBdvc5OwIfWDFWEQL_7LLyH3myi_vJpFnBSZ5HHrZs5yDv2i1/exec")
     )
   ];
 }

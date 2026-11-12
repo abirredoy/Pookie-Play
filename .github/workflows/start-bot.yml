@@ -18,7 +18,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Java for Lavalink
+      - name: Set up Java for private Lavalink
         uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -28,21 +28,62 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Install dependencies
+
+      - name: Install bot dependencies
         run: npm install
 
-      - name: Use public Lavalink nodes
-        run: echo "Connecting to the public Lavalink nodes configured in src/index.js"
-
-      - name: Start Pookie Play
+      - name: Start private Lavalink and Pookie Play
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           GUILD_ID: ${{ secrets.GUILD_ID }}
           GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
+          set -Eeuo pipefail
+
+          echo "Downloading the official Lavalink 4.2.2 server..."
+          curl -fL --retry 3 --retry-delay 2 \
+            https://github.com/lavalink-devs/Lavalink/releases/download/4.2.2/Lavalink.jar \
+            -o Lavalink.jar
+
+          # Generate a fresh private password for this run; it is never committed or exposed publicly.
+          export LAVALINK_SERVER_PASSWORD="$(openssl rand -hex 32)"
+
+          echo "Starting the private Lavalink server on localhost only..."
+          java -Xms512M -Xmx2G -jar Lavalink.jar > lavalink.log 2>&1 &
+          LAVALINK_PID=$!
+          trap 'kill "$LAVALINK_PID" 2>/dev/null || true' EXIT
+
+          echo "Waiting for private Lavalink to become ready..."
+          READY=0
+          for attempt in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:2333/version >/dev/null 2>&1; then
+              READY=1
+              break
+            fi
+            if ! kill -0 "$LAVALINK_PID" 2>/dev/null; then
+              echo "Lavalink exited before becoming ready. Server log:"
+              cat lavalink.log
+              exit 1
+            fi
+            sleep 2
+          done
+
+          if [ "$READY" -ne 1 ]; then
+            echo "Lavalink did not become ready in time. Server log:"
+            cat lavalink.log
+            exit 1
+          fi
+
+          echo "Private Lavalink is ready. Starting Pookie Play..."
+          export LAVALINK_HOST="127.0.0.1:2333"
+          export LAVALINK_PASSWORD="$LAVALINK_SERVER_PASSWORD"
+          export LAVALINK_SECURE="false"
+
           if [ -z "$DISCORD_TOKEN" ] || [ -z "$CLIENT_ID" ]; then
             echo "Missing repository secrets: DISCORD_TOKEN and/or CLIENT_ID"
             exit 1
           fi
+
           npm start

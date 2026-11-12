@@ -150,7 +150,7 @@ client.on("interactionCreate", async interaction => {
 
     if (name === "help") {
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play — Help")
-        .setDescription("YouTube প্রথমে চেষ্টা করবে; না পেলে SoundCloud-এ খুঁজবে।")
+        .setDescription("শুধু লিংক দাও। বট একই লিংক থেকে playable audio চালানোর চেষ্টা করবে; গানের নাম দিয়ে search করে না।")
         .addFields(
           { name: "Music", value: "/play query — গান চালাও\n/queue — Queue দেখো\n/join /leave — Voice control", inline: false },
           { name: "Autoplay", value: "/mode viral | bangla | global | mixed | off\n/autoplay enabled:true|false", inline: false },
@@ -250,7 +250,7 @@ app.get("/api/status", (_req, res) => res.json({
   bot: client.isReady() ? client.user.tag : "Offline",
   connectedGuilds: client.guilds.cache.size,
   lavalinkNodes: [...shoukaku.nodes.values()].map(n => ({ name: n.name, state: n.state })),
-  playback: "YouTube search/playback with SoundCloud fallback"
+  playback: "Link-only playback; supported public media URLs"
 }));
 app.listen(Number(process.env.PORT || 3000), () => console.log("Dashboard listening."));
 client.login(token).catch(error => { console.error("Discord login failed:", error); process.exit(1); });

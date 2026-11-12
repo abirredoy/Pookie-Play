@@ -1,7 +1,7 @@
 require("dotenv").config();
 const {
   Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder,
-  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, PermissionFlagsBits
+  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits
 } = require("discord.js");
 const express = require("express");
 const { Shoukaku, Connectors } = require("shoukaku");
@@ -34,15 +34,9 @@ const commands = [
       .addChoices({name:"Off",value:"off"},{name:"Current track",value:"track"},{name:"Queue",value:"queue"})),
   new SlashCommandBuilder().setName("seek").setDescription("Jump to a position in the current track")
     .addIntegerOption(o => o.setName("seconds").setDescription("Position in seconds").setMinValue(0).setRequired(true)),
-  new SlashCommandBuilder().setName("mode").setDescription("Set automatic music discovery mode")
-    .addStringOption(o => o.setName("type").setDescription("Choose an autoplay style").setRequired(true)
-      .addChoices(
-        { name: "Viral / Popular", value: "viral" },
-        { name: "Bangladesh Trending", value: "bangla" },
-        { name: "Global Trending", value: "global" },
-        { name: "Bangla + Global Mix", value: "mixed" },
-        { name: "Off", value: "off" }
-      )),
+  new SlashCommandBuilder().setName("mode").setDescription("Turn similar-song AutoPlay on or off")
+    .addStringOption(o => o.setName("type").setDescription("AutoPlay setting").setRequired(true)
+      .addChoices({ name: "Auto Mode", value: "auto" }, { name: "Off", value: "off" })),
   new SlashCommandBuilder().setName("autoplay").setDescription("Turn automatic music selection on or off")
     .addBooleanOption(o => o.setName("enabled").setDescription("Enable autoplay").setRequired(true)),
   new SlashCommandBuilder().setName("pause").setDescription("Pause playback"),
@@ -171,16 +165,6 @@ function hasControlPermission(interaction) {
 function controlRows() {
   const button = (id, label, style = ButtonStyle.Secondary) =>
     new ButtonBuilder().setCustomId("pookie_" + id).setLabel(label).setStyle(style);
-  const modeMenu = new StringSelectMenuBuilder()
-    .setCustomId("pookie_mode_select")
-    .setPlaceholder("🎚️ AutoPlay mode বেছে নাও")
-    .addOptions(
-      { label: "Bangla", value: "bangla", emoji: "🇧🇩", description: "বাংলা গান" },
-      { label: "Global", value: "global", emoji: "🌍", description: "আন্তর্জাতিক জনপ্রিয় গান" },
-      { label: "Viral / Popular", value: "viral", emoji: "🔥", description: "জনপ্রিয় ও ভাইরাল গান" },
-      { label: "Bangla + Global Mix", value: "mixed", emoji: "🎧", description: "বাংলা ও বিদেশি গানের মিশ্রণ" },
-      { label: "Off", value: "off", emoji: "⏹️", description: "AutoPlay বন্ধ" }
-    );
   return [
     new ActionRowBuilder().addComponents(
       button("previous", "⏮️ Previous"), button("pause", "⏸️ Pause"),
@@ -201,8 +185,7 @@ function controlRows() {
       button("seek_forward", "⏩ +10 sec"), button("restart", "🔄 Restart"),
       button("nowplaying", "🎵 Now Playing", ButtonStyle.Primary), button("queue", "📜 Queue", ButtonStyle.Primary),
       button("leave", "👋 Leave VC", ButtonStyle.Danger)
-    ),
-    new ActionRowBuilder().addComponents(modeMenu)
+    )
   ];
 }
 
@@ -228,16 +211,6 @@ client.once("ready", async () => {
 
 client.on("interactionCreate", async interaction => {
   try {
-    if (interaction.isStringSelectMenu() && interaction.customId === "pookie_mode_select") {
-      if (!interaction.guildId) return;
-      if (!hasControlPermission(interaction)) {
-        return interaction.reply({ content: "⛔ এই Player নিয়ন্ত্রণ করার অনুমতি তোমার নেই।", ephemeral: true });
-      }
-      const mode = interaction.values[0];
-      music.setMode(interaction.guildId, mode);
-      const names = { bangla: "🇧🇩 Bangla", global: "🌍 Global", viral: "🔥 Viral / Popular", mixed: "🎧 Bangla + Global Mix", off: "⏹️ Off" };
-      return interaction.reply({ content: "🎚️ AutoPlay mode সেট হয়েছে: **" + names[mode] + "**", ephemeral: true });
-    }
     if (interaction.isButton()) {
       if (!interaction.guildId) return;
       if (!hasControlPermission(interaction)) {
@@ -259,7 +232,7 @@ client.on("interactionCreate", async interaction => {
         repeat_off: () => music.setRepeat(interaction.guildId, "off"),
         repeat_track: () => music.setRepeat(interaction.guildId, "track"),
         repeat_queue: () => music.setRepeat(interaction.guildId, "queue"),
-        autoplay: () => music.setMode(interaction.guildId, data.mode === "off" ? "mixed" : "off"),
+        autoplay: () => music.setMode(interaction.guildId, data.mode === "off" ? "auto" : "off"),
         seek_back: () => music.seekRelative(interaction.guildId, -10000),
         seek_forward: () => music.seekRelative(interaction.guildId, 10000),
         restart: () => music.seek(interaction.guildId, 0),
@@ -276,7 +249,7 @@ client.on("interactionCreate", async interaction => {
         const embed = new EmbedBuilder().setColor(0x5865f2)
           .setTitle(id === "queue" ? "📜 Pookie Play Queue" : "🎵 Now Playing")
           .setDescription(current + (upcoming ? "\n\n**⏭️ পরের গান:**\n" + upcoming : "\n\nQueue খালি।"))
-          .setFooter({ text: "🔁 Repeat: " + q.repeat + " • 🤖 AutoPlay: " + q.mode + " • 🔊 Volume: " + q.volume + "%" });
+          .setFooter({ text: "🔁 Repeat: " + q.repeat + " • 🤖 Auto Mode: " + (q.mode === "auto" ? "ON" : "OFF") + " • 🔊 Volume: " + q.volume + "%" });
         return interaction.reply({ embeds: [embed], ephemeral: true });
       }
       const action = simpleActions[id];
@@ -296,7 +269,7 @@ client.on("interactionCreate", async interaction => {
         repeat_off: "➡️ Repeat বন্ধ।",
         repeat_track: "🔂 বর্তমান গান repeat হবে।",
         repeat_queue: "🔁 পুরো queue repeat হবে।",
-        autoplay: result === "off" ? "🤖 AutoPlay বন্ধ।" : "🤖 AutoPlay চালু।",
+        autoplay: result === "off" ? "🤖 Similar Auto Mode বন্ধ।" : "🤖 Similar Auto Mode চালু—বর্তমান গানের মতো গান খুঁজবে।",
         seek_back: "⏪ ১০ সেকেন্ড পেছনে নেওয়া হয়েছে।",
         seek_forward: "⏩ ১০ সেকেন্ড সামনে নেওয়া হয়েছে।",
         restart: "🔄 গানটি শুরু থেকে চালানো হচ্ছে।",
@@ -319,7 +292,7 @@ client.on("interactionCreate", async interaction => {
         .setDescription("YouTube, YouTube Music ও SoundCloud থেকে গান খুঁজে চালানোর চেষ্টা করবে।")
         .addFields(
           { name: "Music", value: "/play query — গান চালাও\n/queue — Queue দেখো\n/join /leave — Voice control", inline: false },
-          { name: "Autoplay", value: "/mode viral | bangla | global | mixed | off\n/autoplay enabled:true|false", inline: false },
+          { name: "Autoplay", value: "/mode auto অথবা off\n/autoplay enabled:true|false — বর্তমান গানের মতো গান নিজে খুঁজবে", inline: false },
           { name: "Queue tools", value: "/shuffle /remove /move /clearqueue /repeat /seek /nowplaying", inline: false },
           { name: "Controls", value: "/pause /resume /skip /stop /volume value এবং Player buttons", inline: false },
           { name: "Admin", value: "/controlrole role — কোন Role বট নিয়ন্ত্রণ করবে সেট করো (Administrator permission প্রয়োজন)", inline: false }
@@ -366,18 +339,18 @@ client.on("interactionCreate", async interaction => {
     if (name === "mode") {
       const mode = interaction.options.getString("type", true);
       music.setMode(interaction.guildId, mode);
-      const labels = { viral: "Viral / Popular", bangla: "Bangladesh Trending", global: "Global Trending", mixed: "Bangla + Global Mix", off: "Off" };
+      const labels = { auto: "Similar Auto Mode", off: "Off" };
       return interaction.reply(mode === "off"
         ? "⚪ Autoplay বন্ধ করা হয়েছে।"
-        : "🎧 Autoplay mode: **" + labels[mode] + "**। Queue খালি হলে এই ধরনের গান নিজে থেকে খুঁজে চালাবে।");
+        : "🎧 **Similar Auto Mode** চালু। Queue খালি হলে বর্তমান গানের মতো গান খুঁজে চালাবে।");
     }
 
     if (name === "autoplay") {
       const enabled = interaction.options.getBoolean("enabled", true);
-      if (enabled && music.getMode(interaction.guildId) === "off") music.setMode(interaction.guildId, "mixed");
+      if (enabled) music.setMode(interaction.guildId, "auto");
       if (!enabled) music.setMode(interaction.guildId, "off");
       return interaction.reply(enabled
-        ? "🔁 Autoplay চালু। বর্তমান mode: " + music.getMode(interaction.guildId)
+        ? "🔁 Similar Auto Mode চালু। বর্তমান গানের মতো গান খুঁজবে।"
         : "⏹️ Autoplay বন্ধ।");
     }
 
@@ -387,7 +360,7 @@ client.on("interactionCreate", async interaction => {
       const upcoming = data.tracks.slice(0, 10).map((t, i) => (i + 1) + ". " + t.title).join("\n");
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎵 Pookie Play Queue")
         .setDescription(current + (upcoming ? "\n\n**পরের গানগুলো:**\n" + upcoming : "\n\nQueue খালি।"))
-        .setFooter({ text: "Autoplay: " + data.mode + " • Repeat: " + data.repeat });
+        .setFooter({ text: "Auto Mode: " + (data.mode === "auto" ? "ON" : "OFF") + " • Repeat: " + data.repeat });
       return interaction.reply({ embeds: [embed] });
     }
 

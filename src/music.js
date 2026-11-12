@@ -10,7 +10,7 @@ function createMusic(shoukaku) {
   const get = (id) => {
     if (!states.has(id)) states.set(id, {
       player: null, queue: [], current: null, currentQuery: "", fallbackTried: false, volume: 70,
-      mode: "off", seedIndex: 0, busy: false, recovering: false
+      mode: "off", repeat: "off", history: [], seedIndex: 0, busy: false, recovering: false
     });
     return states.get(id);
   };
@@ -164,6 +164,13 @@ function createMusic(shoukaku) {
       console.log("[Music] Track ended:", event.reason);
       if (event.reason === "FINISHED") {
         const s = get(guildId);
+        const finished = s.current;
+        if (finished) {
+          s.history.unshift(finished);
+          s.history = s.history.slice(0, 25);
+          if (s.repeat === "track") s.queue.unshift(finished);
+          else if (s.repeat === "queue") s.queue.push(finished);
+        }
         s.current = null;
         playNext(guildId).catch(console.error);
       }
@@ -203,6 +210,7 @@ function createMusic(shoukaku) {
       const s = get(id);
       s.queue = [];
       s.current = null;
+      s.history = [];
       if (s.player) await shoukaku.leaveVoiceChannel(id);
       states.delete(id);
     },
@@ -253,6 +261,7 @@ function createMusic(shoukaku) {
       if (!s.player) return false;
       s.queue = [];
       s.current = null;
+      s.repeat = "off";
       await s.player.stopTrack();
       return true;
     },
@@ -273,9 +282,50 @@ function createMusic(shoukaku) {
       return s.mode;
     },
     getMode(id) { return get(id).mode; },
+    async seek(id, position) {
+      const s = get(id);
+      if (!s.player || !s.current) return false;
+      const duration = Number(s.current.info?.length || 0);
+      const target = Math.max(0, Math.min(Number(position) || 0, duration || Number(position) || 0));
+      await s.player.seekTo(target);
+      return target;
+    },
+    shuffle(id) {
+      const s = get(id);
+      for (let i = s.queue.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [s.queue[i], s.queue[j]] = [s.queue[j], s.queue[i]];
+      }
+      return s.queue.length;
+    },
+    remove(id, index) {
+      const s = get(id);
+      const n = Number(index) - 1;
+      if (!Number.isInteger(n) || n < 0 || n >= s.queue.length) return null;
+      return s.queue.splice(n, 1)[0]?.info || null;
+    },
+    move(id, from, to) {
+      const s = get(id);
+      const a = Number(from) - 1, b = Number(to) - 1;
+      if (![a,b].every(Number.isInteger) || a < 0 || b < 0 || a >= s.queue.length || b >= s.queue.length) return false;
+      const [track] = s.queue.splice(a, 1);
+      s.queue.splice(b, 0, track);
+      return true;
+    },
+    clearQueue(id) {
+      const s = get(id);
+      const count = s.queue.length;
+      s.queue = [];
+      return count;
+    },
+    setRepeat(id, mode) {
+      const s = get(id);
+      s.repeat = ["off", "track", "queue"].includes(mode) ? mode : "off";
+      return s.repeat;
+    },
     getQueue(id) {
       const s = get(id);
-      return { current: s.current?.info || null, tracks: s.queue.map(t => t.info), mode: s.mode };
+      return { current: s.current?.info || null, tracks: s.queue.map(t => t.info), mode: s.mode, repeat: s.repeat, history: s.history.map(t => t.info) };
     }
   };
 }

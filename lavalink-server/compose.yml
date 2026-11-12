@@ -1,0 +1,14 @@
+services:
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4.2.2
+    container_name: pookie-lavalink
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xms512M -Xmx3G"
+      SERVER_PORT: "2333"
+      SERVER_ADDRESS: "${LAVALINK_BIND_IP}"
+      LAVALINK_SERVER_PASSWORD: "${LAVALINK_SERVER_PASSWORD}"
+    volumes:
+      - ./application.yml:/opt/Lavalink/application.yml:ro
+      - ./plugins:/opt/Lavalink/plugins

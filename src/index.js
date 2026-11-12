@@ -1,8 +1,7 @@
 require("dotenv").config();
 const {
   Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder,
-  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
-  ModalBuilder, TextInputBuilder, TextInputStyle
+  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle
 } = require("discord.js");
 const express = require("express");
 const { Shoukaku, Connectors } = require("shoukaku");
@@ -18,10 +17,21 @@ if (!token || !clientId) {
 const commands = [
   new SlashCommandBuilder().setName("join").setDescription("Join your voice channel"),
   new SlashCommandBuilder().setName("leave").setDescription("Leave the voice channel"),
-  new SlashCommandBuilder().setName("play").setDescription("Play media from a supported link")
-    .addStringOption(o => o.setName("query").setDescription("Public audio/video/media URL (link only)").setRequired(true)),
+  new SlashCommandBuilder().setName("play").setDescription("Play a song from YouTube or SoundCloud")
+    .addStringOption(o => o.setName("query").setDescription("Song name or YouTube/SoundCloud link").setRequired(true)),
   new SlashCommandBuilder().setName("player").setDescription("Show music player controls"),
   new SlashCommandBuilder().setName("queue").setDescription("Show the music queue"),
+  new SlashCommandBuilder().setName("mode").setDescription("Set automatic music discovery mode")
+    .addStringOption(o => o.setName("type").setDescription("Choose an autoplay style").setRequired(true)
+      .addChoices(
+        { name: "Viral / Popular", value: "viral" },
+        { name: "Bangladesh Trending", value: "bangla" },
+        { name: "Global Trending", value: "global" },
+        { name: "Bangla + Global Mix", value: "mixed" },
+        { name: "Off", value: "off" }
+      )),
+  new SlashCommandBuilder().setName("autoplay").setDescription("Turn automatic music selection on or off")
+    .addBooleanOption(o => o.setName("enabled").setDescription("Enable autoplay").setRequired(true)),
   new SlashCommandBuilder().setName("pause").setDescription("Pause playback"),
   new SlashCommandBuilder().setName("resume").setDescription("Resume playback"),
   new SlashCommandBuilder().setName("skip").setDescription("Skip the current track"),
@@ -68,7 +78,6 @@ function controlRows() {
     ),
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("pookie_volume_down").setLabel("Volume -").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("pookie_volume_set").setLabel("Set Volume 0–100").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("pookie_volume_up").setLabel("Volume +").setStyle(ButtonStyle.Secondary)
     )
   ];
@@ -94,24 +103,8 @@ client.once("ready", async () => {
 
 client.on("interactionCreate", async interaction => {
   try {
-    if (interaction.isModalSubmit() && interaction.customId === "pookie_volume_modal") {
-      if (!interaction.guildId) return;
-      const raw = interaction.fields.getTextInputValue("volume_value").trim();
-      if (!/^\d{1,3}$/.test(raw) || Number(raw) < 0 || Number(raw) > 100) {
-        return interaction.reply({ content: "০ থেকে ১০০-এর মধ্যে সংখ্যা দাও।", ephemeral: true });
-      }
-      const value = await music.volume(interaction.guildId, Number(raw));
-      return interaction.reply({ content: "🔊 Volume সেট হয়েছে: " + value + "%", ephemeral: true });
-    }
-
     if (interaction.isButton()) {
       if (!interaction.guildId) return;
-      if (interaction.customId === "pookie_volume_set") {
-        const modal = new ModalBuilder().setCustomId("pookie_volume_modal").setTitle("Set Music Volume");
-        const field = new TextInputBuilder().setCustomId("volume_value").setLabel("Volume (0–100)").setStyle(TextInputStyle.Short).setPlaceholder("যেমন 37").setRequired(true).setMinLength(1).setMaxLength(3);
-        modal.addComponents(new ActionRowBuilder().addComponents(field));
-        return interaction.showModal(modal);
-      }
       if (interaction.customId === "pookie_volume_down" || interaction.customId === "pookie_volume_up") {
         const value = await music.adjustVolume(interaction.guildId, interaction.customId === "pookie_volume_up" ? 10 : -10);
         return interaction.reply({ content: "🔊 Volume: " + value + "%", ephemeral: true });
@@ -139,9 +132,10 @@ client.on("interactionCreate", async interaction => {
 
     if (name === "help") {
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play — Help")
-        .setDescription("শুধু লিংক দাও। বট একই লিংক থেকে playable audio চালানোর চেষ্টা করবে; গানের নাম দিয়ে search করে না।")
+        .setDescription("YouTube প্রথমে চেষ্টা করবে; না পেলে SoundCloud-এ খুঁজবে।")
         .addFields(
-          { name: "Music", value: "/play query — public media link দাও (গানের নাম নয়)\n/queue — Queue দেখো\n/join /leave — Voice control", inline: false },
+          { name: "Music", value: "/play query — গান চালাও\n/queue — Queue দেখো\n/join /leave — Voice control", inline: false },
+          { name: "Autoplay", value: "/mode viral | bangla | global | mixed | off\n/autoplay enabled:true|false", inline: false },
           { name: "Controls", value: "/pause /resume /skip /stop /volume value এবং Player buttons", inline: false }
         ).setFooter({ text: "YouTube playback may still be limited by YouTube availability or regional restrictions." });
       return interaction.reply({ embeds: [embed], ephemeral: true });
@@ -154,7 +148,7 @@ client.on("interactionCreate", async interaction => {
       const result = await music.play(interaction.guildId, channel, query);
       const info = result.track.info;
       const embed = new EmbedBuilder().setColor(0x5865f2)
-        .setTitle(result.queued ? "➕ Queue-তে যোগ হয়েছে" : "🎵 চালানোর চেষ্টা করছি")
+        .setTitle(result.queued ? "➕ Queue-তে যোগ হয়েছে" : "🎶 এখন বাজছে")
         .setDescription("**" + (info.title || query).slice(0, 240) + "**\n" + (info.author || "Unknown artist"))
         .addFields(
           { name: "Source", value: info.sourceName || "Audio source", inline: true },
@@ -176,13 +170,31 @@ client.on("interactionCreate", async interaction => {
       return interaction.reply("👋 Voice channel ছেড়েছি।");
     }
 
+    if (name === "mode") {
+      const mode = interaction.options.getString("type", true);
+      music.setMode(interaction.guildId, mode);
+      const labels = { viral: "Viral / Popular", bangla: "Bangladesh Trending", global: "Global Trending", mixed: "Bangla + Global Mix", off: "Off" };
+      return interaction.reply(mode === "off"
+        ? "⚪ Autoplay বন্ধ করা হয়েছে।"
+        : "🎧 Autoplay mode: **" + labels[mode] + "**। Queue খালি হলে এই ধরনের গান নিজে থেকে খুঁজে চালাবে।");
+    }
+
+    if (name === "autoplay") {
+      const enabled = interaction.options.getBoolean("enabled", true);
+      if (enabled && music.getMode(interaction.guildId) === "off") music.setMode(interaction.guildId, "mixed");
+      if (!enabled) music.setMode(interaction.guildId, "off");
+      return interaction.reply(enabled
+        ? "🔁 Autoplay চালু। বর্তমান mode: " + music.getMode(interaction.guildId)
+        : "⏹️ Autoplay বন্ধ।");
+    }
+
     if (name === "queue") {
       const data = music.getQueue(interaction.guildId);
       const current = data.current ? "**এখন বাজছে:** " + data.current.title : "এখন কিছু বাজছে না।";
       const upcoming = data.tracks.slice(0, 10).map((t, i) => (i + 1) + ". " + t.title).join("\n");
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎵 Pookie Play Queue")
         .setDescription(current + (upcoming ? "\n\n**পরের গানগুলো:**\n" + upcoming : "\n\nQueue খালি।"))
-        .setFooter({ text: "Link-only playback" });
+        .setFooter({ text: "Autoplay: " + data.mode });
       return interaction.reply({ embeds: [embed] });
     }
 
@@ -220,7 +232,7 @@ app.get("/api/status", (_req, res) => res.json({
   bot: client.isReady() ? client.user.tag : "Offline",
   connectedGuilds: client.guilds.cache.size,
   lavalinkNodes: [...shoukaku.nodes.values()].map(n => ({ name: n.name, state: n.state })),
-  playback: "Link-only playback; supported public media URLs"
+  playback: "YouTube search/playback with SoundCloud fallback"
 }));
 app.listen(Number(process.env.PORT || 3000), () => console.log("Dashboard listening."));
 client.login(token).catch(error => { console.error("Discord login failed:", error); process.exit(1); });

@@ -258,8 +258,21 @@ function createMusic(shoukaku) {
     async skip(id) {
       const s = get(id);
       if (!s.player || !s.current) return false;
+      s.history.unshift(s.current);
+      s.history = s.history.slice(0, 25);
       await s.player.stopTrack();
       s.current = null;
+      return playNext(id);
+    },
+    async previous(id) {
+      const s = get(id);
+      if (!s.player || !s.current || !s.history.length) return false;
+      const previousTrack = s.history.shift();
+      s.queue.unshift(s.current);
+      s.queue.unshift(previousTrack);
+      await s.player.stopTrack();
+      s.current = null;
+      s.fallbackTried = false;
       return playNext(id);
     },
     async stop(id) {
@@ -331,7 +344,7 @@ function createMusic(shoukaku) {
     },
     getQueue(id) {
       const s = get(id);
-      return { current: s.current?.info || null, tracks: s.queue.map(t => t.info), mode: s.mode, repeat: s.repeat, history: s.history.map(t => t.info) };
+      return { current: s.current?.info || null, tracks: s.queue.map(t => t.info), mode: s.mode, repeat: s.repeat, volume: s.volume, history: s.history.map(t => t.info) };
     }
   };
 }

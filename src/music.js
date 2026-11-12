@@ -1,8 +1,8 @@
 function languageHint(info = {}) {
   const text = String((info.title || "") + " " + (info.author || ""));
-  if (/[\\u0980-\\u09FF]/.test(text)) return "Bangla";
-  if (/[\\u0900-\\u097F]/.test(text)) return "Hindi";
-  if (/[\\u0600-\\u06FF]/.test(text)) return "Arabic";
+  if (/[\u0980-\u09FF]/.test(text)) return "Bangla";
+  if (/[\u0900-\u097F]/.test(text)) return "Hindi";
+  if (/[\u0600-\u06FF]/.test(text)) return "Arabic";
   return "";
 }
 

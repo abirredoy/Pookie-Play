@@ -175,7 +175,7 @@ function controlRows(q = {}) {
   return [
     new ActionRowBuilder().addComponents(
       button("previous", "⏮️ Previous"), button("pause", "⏸️ Pause"),
-      button("resume", "▶️ Resume", q.paused ? active : ButtonStyle.Secondary),
+      button("resume", "▶️ Resume", ButtonStyle.Secondary),
       button("skip", "⏭️ Next", ButtonStyle.Primary), button("stop", "⏹️ Stop", ButtonStyle.Danger)
     ),
     new ActionRowBuilder().addComponents(
@@ -184,7 +184,7 @@ function controlRows(q = {}) {
       button("shuffle", "🔀 Shuffle"), button("clearqueue", "🧹 Clear Queue", ButtonStyle.Danger)
     ),
     new ActionRowBuilder().addComponents(
-      button("repeat_off", "➡️ Repeat Off", q.repeat === "off" ? active : inactive),
+      button("repeat_off", "➡️ Repeat Off", inactive),
       button("repeat_track", "🔂 Repeat Song", q.repeat === "track" ? active : inactive),
       button("repeat_queue", "🔁 Repeat Queue", q.repeat === "queue" ? active : inactive),
       button("autoplay", "🤖 AutoPlay", q.mode === "auto" ? active : inactive),
@@ -229,8 +229,8 @@ client.on("interactionCreate", async interaction => {
       if (id === "queue" || id === "nowplaying") {
         const q = music.getQueue(interaction.guildId);
         const status = id === "queue"
-          ? "Queue-তে " + q.tracks.length + "টি গান আছে"
-          : (q.current ? "Now Playing: " + q.current.title : "এখন কোনো গান চলছে না");
+          ? "Queue viewed • " + q.tracks.length + " upcoming track(s)"
+          : (q.current ? "Now playing: " + q.current.title : "Nothing is playing");
         const embed = interaction.message.embeds[0]
           ? EmbedBuilder.from(interaction.message.embeds[0])
           : new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play");
@@ -274,19 +274,20 @@ client.on("interactionCreate", async interaction => {
         console.error("[Player button] Action failed:", id, error);
       }
       const labels = {
-        previous: "আগের গান চালানো হয়েছে", pause: "Playback pause করা হয়েছে",
-        resume: "Playback resume করা হয়েছে", skip: "পরের গান চালানো হয়েছে",
-        stop: "Playback বন্ধ করা হয়েছে", volume_down: "Volume কমানো হয়েছে",
-        volume_up: "Volume বাড়ানো হয়েছে", mute: result?.muted ? "Mute ON" : "Mute OFF",
-        shuffle: "Queue shuffle করা হয়েছে", clearqueue: "Queue পরিষ্কার করা হয়েছে",
-        repeat_off: "Repeat OFF", repeat_track: "Repeat Song ON", repeat_queue: "Repeat Queue ON",
-        autoplay: result === "off" ? "AutoPlay OFF" : "AutoPlay ON",
-        seek_back: "১০ সেকেন্ড পেছনে নেওয়া হয়েছে", seek_forward: "১০ সেকেন্ড সামনে নেওয়া হয়েছে",
-        restart: "গান শুরু থেকে চালানো হচ্ছে", vol25: "Volume 25%", vol50: "Volume 50%",
-        vol75: "Volume 75%", vol100: "Volume 100%", leave: "Voice channel ছেড়ে দেওয়া হয়েছে"
+        previous: "Previous track", pause: "Playback paused",
+        resume: "Playback resumed", skip: "Next track selected",
+        stop: "Playback stopped", volume_down: "Volume: " + result.before + "% → " + result.after + "%",
+        volume_up: "Volume: " + result.before + "% → " + result.after + "%",
+        mute: result?.muted ? "Mute: ON" : "Mute: OFF",
+        shuffle: "Queue shuffled", clearqueue: "Upcoming queue cleared",
+        repeat_off: "Repeat: OFF", repeat_track: "Repeat: SONG", repeat_queue: "Repeat: QUEUE",
+        autoplay: result === "off" ? "AutoPlay: OFF" : "AutoPlay: ON",
+        seek_back: "Seeked back 10 seconds", seek_forward: "Seeked forward 10 seconds",
+        restart: "Track restarted", vol25: "Volume: 25%", vol50: "Volume: 50%",
+        vol75: "Volume: 75%", vol100: "Volume: 100%", leave: "Disconnected from voice channel"
       };
       const q = music.getQueue(interaction.guildId);
-      const status = success ? (labels[id] || "কাজ সম্পন্ন হয়েছে") : "এই কাজটি করা যায়নি";
+      const status = success ? (labels[id] || "Action completed") : "Action failed — check voice connection or queue";
       const embed = interaction.message.embeds[0]
         ? EmbedBuilder.from(interaction.message.embeds[0])
         : new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play");
@@ -345,22 +346,19 @@ client.on("interactionCreate", async interaction => {
       return interaction.reply("👋 Voice channel ছেড়েছি।");
     }
 
-    if (name === "mode") {
-      const mode = interaction.options.getString("type", true);
-      music.setMode(interaction.guildId, mode);
-      const labels = { auto: "Similar Auto Mode", off: "Off" };
-      return interaction.reply(mode === "off"
-        ? "⚪ Autoplay বন্ধ করা হয়েছে।"
-        : "🎧 **Similar Auto Mode** চালু। Queue খালি হলে বর্তমান গানের মতো গান খুঁজে চালাবে।");
-    }
-
-    if (name === "autoplay") {
-      const enabled = interaction.options.getBoolean("enabled", true);
-      if (enabled) music.setMode(interaction.guildId, "auto");
-      if (!enabled) music.setMode(interaction.guildId, "off");
-      return interaction.reply(enabled
-        ? "🔁 Similar Auto Mode চালু। বর্তমান গানের মতো গান খুঁজবে।"
-        : "⏹️ Autoplay বন্ধ।");
+    if (name === "mode" || name === "autoplay") {
+      const enabled = name === "mode"
+        ? interaction.options.getString("type", true) === "auto"
+        : interaction.options.getBoolean("enabled", true);
+      if (enabled) {
+        const channel = await requireVoice(interaction);
+        await music.join(interaction.guildId, channel);
+        music.setTextChannel?.(interaction.guildId, interaction.channelId);
+      }
+      const mode = await music.setMode(interaction.guildId, enabled ? "auto" : "off");
+      return interaction.reply({ content: enabled
+        ? "🤖 AutoPlay: ON — similar tracks will play after the current track, or a random popular track will start if the player is idle."
+        : "🤖 AutoPlay: OFF", ephemeral: true });
     }
 
     if (name === "queue") {

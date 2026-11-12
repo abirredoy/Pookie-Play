@@ -17,21 +17,21 @@ if (!token || !clientId) {
 const commands = [
   new SlashCommandBuilder().setName("join").setDescription("Join your voice channel"),
   new SlashCommandBuilder().setName("leave").setDescription("Leave the voice channel"),
-  new SlashCommandBuilder().setName("play").setDescription("Play a song or a saved Quick Slot")
+  new SlashCommandBuilder().setName("play").setDescription("Play a song or a saved List Slot")
     .addStringOption(o => o.setName("query").setDescription("Song name or song link").setRequired(false))
-    .addIntegerOption(o => o.setName("quick").setDescription("Play saved Quick Slot 1-10").setMinValue(1).setMaxValue(10).setRequired(false)),
-  new SlashCommandBuilder().setName("add").setDescription("Add a song to Queue Mode without replacing the current track")
+    .addIntegerOption(o => o.setName("list").setDescription("Play saved List Slot 1-10").setMinValue(1).setMaxValue(10).setRequired(false)),
+  new SlashCommandBuilder().setName("add").setDescription("Add a song to List Mode without replacing the current track")
     .addStringOption(o => o.setName("query").setDescription("Song name or song link").setRequired(true)),
-  new SlashCommandBuilder().setName("quick").setDescription("Manage your 10 saved Quick Queue slots")
+  new SlashCommandBuilder().setName("list").setDescription("Manage your 10 saved List Queue slots")
     .addSubcommand(s => s.setName("add").setDescription("Save a song in a numbered slot")
       .addIntegerOption(o => o.setName("slot").setDescription("Slot number 1-10").setMinValue(1).setMaxValue(10).setRequired(true))
       .addStringOption(o => o.setName("query").setDescription("Song name or song link").setRequired(true)))
     .addSubcommand(s => s.setName("remove").setDescription("Remove a saved slot")
       .addIntegerOption(o => o.setName("slot").setDescription("Slot number 1-10").setMinValue(1).setMaxValue(10).setRequired(true)))
-    .addSubcommand(s => s.setName("list").setDescription("Show saved Quick Queue slots"))
-    .addSubcommand(s => s.setName("clear").setDescription("Clear all 10 Quick Queue slots"))
-    .addSubcommand(s => s.setName("mode").setDescription("Turn serial Quick Mode on or off")
-      .addBooleanOption(o => o.setName("enabled").setDescription("Enable serial Quick Mode").setRequired(true))),
+    .addSubcommand(s => s.setName("show").setDescription("Show saved List slots"))
+    .addSubcommand(s => s.setName("clear").setDescription("Clear all 10 List Queue slots"))
+    .addSubcommand(s => s.setName("mode").setDescription("Turn serial List Mode on or off")
+      .addBooleanOption(o => o.setName("enabled").setDescription("Enable serial List Mode").setRequired(true))),
   new SlashCommandBuilder().setName("player").setDescription("Show music player controls"),
   new SlashCommandBuilder().setName("queue").setDescription("Show the music queue"),
   new SlashCommandBuilder().setName("nowplaying").setDescription("Show the current track"),
@@ -47,11 +47,8 @@ const commands = [
       .addChoices({name:"Off",value:"off"},{name:"Current track",value:"track"},{name:"Queue",value:"queue"},{name:"Shuffle playlist",value:"shuffle"})),
   new SlashCommandBuilder().setName("seek").setDescription("Jump to a position in the current track")
     .addIntegerOption(o => o.setName("seconds").setDescription("Position in seconds").setMinValue(0).setRequired(true)),
-  new SlashCommandBuilder().setName("mode").setDescription("Switch between Auto Mode and Queue Mode")
-    .addStringOption(o => o.setName("type").setDescription("Playback mode").setRequired(true)
-      .addChoices({ name: "Auto Mode", value: "auto" }, { name: "Queue Mode", value: "queue" })),
-  new SlashCommandBuilder().setName("autoplay").setDescription("Turn automatic music selection on or off")
-    .addBooleanOption(o => o.setName("enabled").setDescription("Enable autoplay").setRequired(true)),
+
+
   new SlashCommandBuilder().setName("pause").setDescription("Pause playback"),
   new SlashCommandBuilder().setName("resume").setDescription("Resume playback"),
   new SlashCommandBuilder().setName("skip").setDescription("Skip the current track"),
@@ -104,47 +101,47 @@ const music = createMusic(shoukaku, async (guildId, track, state) => {
     console.error("[Player message] Could not post track card:", error?.message || error);
   }
 });
-const quickStoragePath = "data/quick-queues.json";
-let quickSaveChain = Promise.resolve();
+const listStoragePath = "data/list-queues.json";
+let listSaveChain = Promise.resolve();
 
-async function loadQuickStorage() {
+async function loadListStorage() {
   const repo = process.env.GITHUB_REPOSITORY;
   const ghToken = process.env.GITHUB_TOKEN;
   if (!repo || !ghToken) {
-    console.warn("[Quick Queue] GitHub storage unavailable; saved slots will be session-only.");
+    console.warn("[List Queue] GitHub storage unavailable; saved slots will be session-only.");
     return;
   }
-  const url = "https://api.github.com/repos/" + repo + "/contents/" + quickStoragePath;
+  const url = "https://api.github.com/repos/" + repo + "/contents/" + listStoragePath;
   const response = await fetch(url, { headers: { Authorization: "Bearer " + ghToken, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" } });
   if (response.status === 404) return;
-  if (!response.ok) throw new Error("Could not load Quick Queue storage: HTTP " + response.status);
+  if (!response.ok) throw new Error("Could not load List Queue storage: HTTP " + response.status);
   const file = await response.json();
   const saved = JSON.parse(Buffer.from(file.content, "base64").toString("utf8"));
-  music.loadQuickSlots(saved);
-  console.log("[Quick Queue] Loaded saved slots for", Object.keys(saved).length, "server(s).");
+  music.loadListSlots(saved);
+  console.log("[List Queue] Loaded saved slots for", Object.keys(saved).length, "server(s).");
 }
 
-function persistQuickStorage() {
-  quickSaveChain = quickSaveChain.then(async () => {
+function persistListStorage() {
+  listSaveChain = listSaveChain.then(async () => {
     const repo = process.env.GITHUB_REPOSITORY;
     const ghToken = process.env.GITHUB_TOKEN;
-    if (!repo || !ghToken) throw new Error("GitHub storage unavailable; cannot persist Quick Queue.");
-    const url = "https://api.github.com/repos/" + repo + "/contents/" + quickStoragePath;
+    if (!repo || !ghToken) throw new Error("GitHub storage unavailable; cannot persist List Queue.");
+    const url = "https://api.github.com/repos/" + repo + "/contents/" + listStoragePath;
     const headers = { Authorization: "Bearer " + ghToken, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
     const current = await fetch(url, { headers });
     let sha;
     if (current.ok) sha = (await current.json()).sha;
-    else if (current.status !== 404) throw new Error("Could not read Quick Queue storage: HTTP " + current.status);
+    else if (current.status !== 404) throw new Error("Could not read List Queue storage: HTTP " + current.status);
     const body = {
-      message: "Save Pookie Play Quick Queue slots",
-      content: Buffer.from(JSON.stringify(music.exportQuickSlots(), null, 2) + "\n").toString("base64"),
+      message: "Save Pookie Play List Queue slots",
+      content: Buffer.from(JSON.stringify(music.exportListSlots(), null, 2) + "\n").toString("base64"),
       branch: process.env.GITHUB_REF_NAME || "main"
     };
     if (sha) body.sha = sha;
     const response = await fetch(url, { method: "PUT", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    if (!response.ok) throw new Error("Could not save Quick Queue: HTTP " + response.status + " " + (await response.text()).slice(0, 250));
+    if (!response.ok) throw new Error("Could not save List Queue: HTTP " + response.status + " " + (await response.text()).slice(0, 250));
   });
-  return quickSaveChain;
+  return listSaveChain;
 }
 
 const controlRoles = new Map();
@@ -220,12 +217,12 @@ function playerStatusFooter(q, status = "Ready") {
   const auto = q.mode === "auto" ? "ON" : "OFF";
   const queue = q.mode === "queue" ? "ON" : "OFF";
   const repeat = q.repeat === "track" ? "Song" : q.repeat === "queue" ? "Queue" : "OFF";
-  return { text: "🤖 Auto Mode: " + auto + " • 📜 Queue Mode: " + queue + " • 🔟 Quick Mode: " + (q.quickMode ? "ON" : "OFF") + " • Repeat: " + repeat + "\n📍 Status: " + String(status).slice(0, 130) };
+  return { text: "🤖 Auto Mode: " + auto + " • 📜 Queue Mode: " + queue + " • 🔟 List Mode: " + (q.listMode ? "ON" : "OFF") + " • Repeat: " + repeat + "\n📍 Status: " + String(status).slice(0, 130) };
 }
 
 function setPlayerStats(embed, q = {}) {
   const current = q.current || {};
-  const mode = q.quickMode ? "Quick" : q.mode === "auto" ? "Auto" : "Queue";
+  const mode = q.listMode ? "List" : q.mode === "auto" ? "Auto" : "Queue";
   embed.setFields(
     { name: "🎧 Source", value: String(current.sourceName || "Unknown"), inline: true },
     { name: "🔊 Volume", value: String(Number.isFinite(q.volume) ? q.volume : 100) + "%", inline: true },
@@ -240,39 +237,24 @@ function setPlayerStats(embed, q = {}) {
 function controlRows(q = {}) {
   const button = (id, label, style = ButtonStyle.Secondary) =>
     new ButtonBuilder().setCustomId("pookie_" + id).setLabel(label).setStyle(style);
-  const active = ButtonStyle.Danger;
-  const inactive = ButtonStyle.Primary;
   return [
     new ActionRowBuilder().addComponents(
-      button("previous", "⏮️ Previous"), button("pause", "⏸️ Pause"),
-      button("resume", "▶️ Resume", ButtonStyle.Secondary),
-      button("skip", "⏭️ Next", ButtonStyle.Primary), button("stop", "⏹️ Stop", ButtonStyle.Danger)
+      button("previous", "⏮️ Previous"),
+      button(q.paused ? "resume" : "pause", q.paused ? "▶️ Play" : "⏸️ Pause", q.paused ? ButtonStyle.Success : ButtonStyle.Primary),
+      button("skip", "⏭️ Next", ButtonStyle.Primary)
     ),
     new ActionRowBuilder().addComponents(
-      button("volume_down", "🔉 Volume −"), button("volume_up", "🔊 Volume +"),
-      button("mute", q.muted ? "🔊 Unmute" : "🔇 Mute", q.muted ? active : inactive),
-      button("shuffle", "🔀 Shuffle"), button("clearqueue", "🧹 Clear Queue", ButtonStyle.Danger)
-    ),
-    new ActionRowBuilder().addComponents(
-      button(
-        "repeat_cycle",
+      button("volume_down", "🔉 Volume −"),
+      button("volume_up", "🔊 Volume +"),
+      button("repeat_cycle",
         q.repeat === "track" ? "🔂 Loop: Song" :
-          q.repeat === "queue" ? "🔁 Loop: Queue" :
-          q.repeat === "shuffle" ? "🔀 Loop: Shuffle" : "➡️ Loop: Off",
-        q.repeat === "track" ? ButtonStyle.Success :
-          q.repeat === "queue" ? ButtonStyle.Primary :
-          q.repeat === "shuffle" ? ButtonStyle.Danger : ButtonStyle.Secondary
-      ),
-      button("autoplay", "🤖 Auto Mode", q.mode === "auto" ? active : inactive),
-      button("queue_mode", "📜 Queue Mode", q.mode === "queue" ? active : inactive)
+        q.repeat === "queue" ? "🔁 Loop: List" :
+        q.repeat === "shuffle" ? "🔀 Loop: Mix" : "➡️ Loop: Off",
+        q.repeat === "off" ? ButtonStyle.Secondary : ButtonStyle.Success)
     ),
     new ActionRowBuilder().addComponents(
-      button("seek_back", "⏪ −10 sec"), button("seek_forward", "⏩ +10 sec"),
-      button("restart", "🔄 Restart"), button("random_next", "🎲 Random Next"),
-      button("nowplaying", "🎵 Now Playing", ButtonStyle.Primary)
-    ),
-    new ActionRowBuilder().addComponents(
-      button("queue", "📜 Queue", ButtonStyle.Primary), button("leave", "👋 Leave VC", ButtonStyle.Danger)
+      button("mode_toggle", q.listMode ? "📜 List Mode: ON" : "🤖 Auto Mode: ON", q.listMode ? ButtonStyle.Success : ButtonStyle.Primary),
+      button("random_next", "🎲 Random Play", ButtonStyle.Primary)
     )
   ];
 }
@@ -286,8 +268,8 @@ client.once("ready", async () => {
   console.log("Logged in as " + client.user.tag);
   try { await loadControlRoles(); }
   catch (error) { console.error("[Permissions] Failed to load role settings:", error); }
-  try { await loadQuickStorage(); }
-  catch (error) { console.error("[Quick Queue] Failed to load saved slots:", error); }
+  try { await loadListStorage(); }
+  catch (error) { console.error("[List Queue] Failed to load saved slots:", error); }
   const rest = new REST({ version: "10" }).setToken(token);
   try {
     const route = process.env.GUILD_ID
@@ -333,28 +315,17 @@ client.on("interactionCreate", async interaction => {
         pause: () => music.pause(interaction.guildId),
         resume: () => music.resume(interaction.guildId),
         skip: () => music.skip(interaction.guildId),
-        stop: () => music.stop(interaction.guildId),
         volume_down: () => music.adjustVolume(interaction.guildId, -10),
         volume_up: () => music.adjustVolume(interaction.guildId, 10),
-        mute: () => music.toggleMute(interaction.guildId),
-        shuffle: () => music.shuffle(interaction.guildId),
-        clearqueue: () => music.clearQueue(interaction.guildId),
         repeat_cycle: () => {
           const order = ["off", "track", "queue", "shuffle"];
           const current = order.indexOf(data.repeat || "off");
           return music.setRepeat(interaction.guildId, order[(current + 1) % order.length]);
         },
-        autoplay: () => music.setMode(interaction.guildId, data.mode === "auto" ? "queue" : "auto"),
-        queue_mode: () => music.setMode(interaction.guildId, data.mode === "queue" ? "auto" : "queue"),
-        random_next: () => music.randomNext(interaction.guildId),
-        seek_back: () => music.seekRelative(interaction.guildId, -10000),
-        seek_forward: () => music.seekRelative(interaction.guildId, 10000),
-        restart: () => music.seek(interaction.guildId, 0),
-        vol25: () => music.volume(interaction.guildId, 25),
-        vol50: () => music.volume(interaction.guildId, 50),
-        vol75: () => music.volume(interaction.guildId, 75),
-        vol100: () => music.volume(interaction.guildId, 100),
-        leave: () => music.leave(interaction.guildId)
+        mode_toggle: async () => data.listMode
+          ? (await music.setListMode(interaction.guildId, false), "auto")
+          : (await music.setListMode(interaction.guildId, true), "list"),
+        random_next: () => music.randomNext(interaction.guildId)
       };
       const action = simpleActions[id];
       if (!action) return;
@@ -363,8 +334,7 @@ client.on("interactionCreate", async interaction => {
       let success = false;
       try {
         result = await action();
-        success = ["shuffle", "clearqueue", "repeat_cycle", "autoplay", "queue_mode", "volume_down", "volume_up", "mute", "vol25", "vol50", "vol75", "vol100", "leave"].includes(id)
-          ? true : result !== false;
+        success = ["repeat_cycle", "mode_toggle", "volume_down", "volume_up"].includes(id) ? true : result !== false;
       } catch (error) {
         console.error("[Player button] Action failed:", id, error);
       }
@@ -375,10 +345,9 @@ client.on("interactionCreate", async interaction => {
         volume_up: "Volume: " + (result?.before ?? "?") + "% → " + (result?.after ?? "?") + "%",
         mute: result?.muted ? "Mute: ON" : "Mute: OFF",
         shuffle: "Queue shuffled", clearqueue: "Upcoming queue cleared",
-        repeat_cycle: "Repeat: " + ({off:"OFF",track:"SONG",queue:"QUEUE",shuffle:"SHUFFLE"}[result] || "OFF"),
-        autoplay: result === "auto" ? "Auto Mode: ON • Queue Mode: OFF" : "Auto Mode: OFF • Queue Mode: ON",
-        queue_mode: result === "queue" ? "Queue Mode: ON • Auto Mode: OFF" : "Queue Mode: OFF • Auto Mode: ON",
-        random_next: "Random related track selected",
+        repeat_cycle: "Loop: " + ({off:"OFF",track:"SONG",queue:"LIST",shuffle:"MIX"}[result] || "OFF"),
+        mode_toggle: result === "list" ? "List Mode: ON • Auto Mode: OFF" : "Auto Mode: ON • List Mode: OFF",
+        random_next: "Random track selected",
         seek_back: "Seeked back 10 seconds", seek_forward: "Seeked forward 10 seconds",
         restart: "Track restarted", vol25: "Volume: 25%", vol50: "Volume: 50%",
         vol75: "Volume: 75%", vol100: "Volume: 100%", leave: "Disconnected from voice channel"
@@ -403,8 +372,8 @@ client.on("interactionCreate", async interaction => {
         .setDescription("YouTube, YouTube Music ও SoundCloud থেকে গান খুঁজে চালানোর চেষ্টা করবে।")
         .addFields(
           { name: "Music", value: "/play query — গান চালাও\n/queue — Queue দেখো\n/join /leave — Voice control", inline: false },
-          { name: "Playback modes", value: "/mode auto অথবা queue — Auto Mode ও Queue Mode একসঙ্গে চালু হবে না", inline: false },
-          { name: "Queue tools", value: "/add query — Queue Mode-এ গান যোগ করো\n/quick add slot query — ১০টি Quick Slot-এ গান রাখো\n/quick list /quick remove /quick clear /quick mode\n/play quick — Quick Slot নম্বর দিয়ে চালাও\n/queue /shuffle /remove /move /clearqueue /repeat /seek /nowplaying", inline: false },
+          { name: "Playback modes", value: "/mode auto অথবা queue — Auto Mode ও List Mode একসঙ্গে চালু হবে না", inline: false },
+          { name: "Queue tools", value: "/add query — Queue Mode-এ গান যোগ করো\n/list add slot query — ১০টি List Slot-এ গান রাখো\n/list list /list remove /list clear /list mode\n/play list — List Slot নম্বর দিয়ে চালাও\n/queue /shuffle /remove /move /clearqueue /repeat /seek /nowplaying", inline: false },
           { name: "Controls", value: "/pause /resume /skip /stop /volume value এবং Player buttons", inline: false },
           { name: "Admin", value: "/controlrole role — কোন Role বট নিয়ন্ত্রণ করবে সেট করো (Administrator permission প্রয়োজন)", inline: false }
         ).setFooter({ text: "Sources: YouTube • YouTube Music • SoundCloud (যেটি পাওয়া যায়)।" });
@@ -426,16 +395,16 @@ client.on("interactionCreate", async interaction => {
     }
 
     if (name === "play") {
-      const quickSlot = interaction.options.getInteger("quick");
+      const listSlot = interaction.options.getInteger("list");
       const query = interaction.options.getString("query");
-      if ((quickSlot === null) === (!query)) {
-        return interaction.reply({ content: "একটি বেছে নাও: গান চালাতে query দাও অথবা Quick Slot চালাতে quick: 1-10 দাও।", ephemeral: true });
+      if ((listSlot === null) === (!query)) {
+        return interaction.reply({ content: "একটি বেছে নাও: গান চালাতে query দাও অথবা List Slot চালাতে list: 1-10 দাও।", ephemeral: true });
       }
       const channel = await requireVoice(interaction);
       await interaction.deferReply();
-      if (quickSlot !== null) {
-        const result = await music.playQuick(interaction.guildId, channel, quickSlot, interaction.channelId);
-        return interaction.editReply("🎶 Quick Slot " + result.slot + " থেকে **" + result.track.info.title + "** চালু হচ্ছে। Quick Mode-এ পরের Slot-গুলোও সিরিয়াল অনুযায়ী বাজবে।");
+      if (listSlot !== null) {
+        const result = await music.playList(interaction.guildId, channel, listSlot, interaction.channelId);
+        return interaction.editReply("🎶 List Slot " + result.slot + " থেকে **" + result.track.info.title + "** চালু হচ্ছে। List Mode-এ পরের Slot-গুলোও সিরিয়াল অনুযায়ী বাজবে।");
       }
       const result = await music.play(interaction.guildId, channel, query, interaction.channelId);
       return interaction.editReply(result.queued
@@ -443,51 +412,51 @@ client.on("interactionCreate", async interaction => {
         : "🎶 **" + result.track.info.title + "** চালু হচ্ছে। নতুন Player card পাঠানো হচ্ছে।");
     }
 
-    if (name === "quick") {
+    if (name === "list") {
       const sub = interaction.options.getSubcommand();
       if (sub === "add") {
         const slot = interaction.options.getInteger("slot", true);
         const query = interaction.options.getString("query", true);
         const channel = await requireVoice(interaction);
         await interaction.deferReply();
-        const result = await music.addQuick(interaction.guildId, channel, slot, query, interaction.channelId);
-        await persistQuickStorage();
-        return interaction.editReply("💾 **" + result.track.info.title + "** Quick Slot " + result.slot + "-এ সংরক্ষিত হয়েছে। (" + result.count + "/10)");
+        const result = await music.addList(interaction.guildId, channel, slot, query, interaction.channelId);
+        await persistListStorage();
+        return interaction.editReply("💾 **" + result.track.info.title + "** List Slot " + result.slot + "-এ সংরক্ষিত হয়েছে। (" + result.count + "/10)");
       }
       if (sub === "remove") {
         const slot = interaction.options.getInteger("slot", true);
-        const result = await music.removeQuick(interaction.guildId, slot);
+        const result = await music.removeList(interaction.guildId, slot);
         if (!result) return interaction.reply({ content: "এই Slot খালি।", ephemeral: true });
-        await persistQuickStorage();
-        return interaction.reply("🗑️ Quick Slot " + slot + " থেকে **" + result.info.title + "** সরানো হয়েছে।");
+        await persistListStorage();
+        return interaction.reply("🗑️ List Slot " + slot + " থেকে **" + result.info.title + "** সরানো হয়েছে।");
       }
-      if (sub === "list") {
-        const slots = music.getQuickSlots(interaction.guildId);
+      if (sub === "show") {
+        const slots = music.getListSlots(interaction.guildId);
         const lines = Array.from({length:10}, (_,i) => {
           const found = slots.find(item => item.slot === i+1);
           return (i+1) + ". " + (found ? found.info.title : "— খালি —");
         });
         const q = music.getQueue(interaction.guildId);
-        return interaction.reply("**🎵 Quick Queue (" + slots.length + "/10)**\n" + lines.map(line => line.slice(0, 140)).join("\n") + "\nQuick Mode: " + (q.quickMode ? "ON" : "OFF"));
+        return interaction.reply("**🎵 List Queue (" + slots.length + "/10)**\n" + lines.map(line => line.slice(0, 140)).join("\n") + "\nList Mode: " + (q.listMode ? "ON" : "OFF"));
       }
       if (sub === "clear") {
-        const count = music.clearQuick(interaction.guildId);
-        await persistQuickStorage();
-        return interaction.reply("🧹 Quick Queue-এর " + count + "টি Slot খালি করা হয়েছে।");
+        const count = music.clearList(interaction.guildId);
+        await persistListStorage();
+        return interaction.reply("🧹 List Queue-এর " + count + "টি Slot খালি করা হয়েছে।");
       }
       if (sub === "mode") {
         const enabled = interaction.options.getBoolean("enabled", true);
         if (enabled) await requireVoice(interaction);
         const channel = interaction.member?.voice?.channel;
-        if (enabled && !channel) throw new Error("Quick Mode চালাতে আগে voice channel-এ যোগ দাও।");
+        if (enabled && !channel) throw new Error("List Mode চালাতে আগে voice channel-এ যোগ দাও।");
         if (enabled) {
           await music.join(interaction.guildId, channel);
           music.setTextChannel(interaction.guildId, interaction.channelId);
         }
-        const active = await music.setQuickMode(interaction.guildId, enabled);
+        const active = await music.setListMode(interaction.guildId, enabled);
         return interaction.reply(active
-          ? "🔟 Quick Mode ON। Slot অনুযায়ী গান সিরিয়ালভাবে বাজবে। AutoPlay OFF।"
-          : "Quick Mode OFF। বর্তমান গান শেষ হলে আর Quick Slot নিজে থেকে চলবে না।");
+          ? "🔟 List Mode ON। Slot অনুযায়ী গান সিরিয়ালভাবে বাজবে। AutoPlay OFF।"
+          : "List Mode OFF। বর্তমান গান শেষ হলে আর List Slot নিজে থেকে চলবে না।");
       }
     }
 
@@ -516,22 +485,6 @@ client.on("interactionCreate", async interaction => {
       return interaction.reply("👋 Voice channel ছেড়েছি।");
     }
 
-    if (name === "mode" || name === "autoplay") {
-      const selectedMode = name === "mode"
-        ? interaction.options.getString("type", true)
-        : (interaction.options.getBoolean("enabled", true) ? "auto" : "queue");
-      const enabled = selectedMode === "auto";
-      await interaction.deferReply({ ephemeral: true });
-      if (enabled) {
-        const channel = await requireVoice(interaction);
-        await music.join(interaction.guildId, channel);
-        music.setTextChannel(interaction.guildId, interaction.channelId);
-      }
-      await music.setMode(interaction.guildId, selectedMode);
-      return interaction.editReply(enabled
-        ? "Auto Mode: ON. Related tracks will play continuously."
-        : "Queue Mode: ON. Only tracks added to the queue will play.");
-    }
 
     if (name === "queue") {
       const data = music.getQueue(interaction.guildId);
@@ -539,7 +492,7 @@ client.on("interactionCreate", async interaction => {
       const upcoming = data.tracks.slice(0, 10).map((t, i) => (i + 1) + ". " + t.title).join("\n");
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎵 Pookie Play Queue")
         .setDescription(current + (upcoming ? "\n\n**পরের গানগুলো:**\n" + upcoming : "\n\nQueue খালি।"))
-        .setFooter({ text: "Auto Mode: " + (data.mode === "auto" ? "ON" : "OFF") + " • Queue Mode: " + (data.mode === "queue" ? "ON" : "OFF") + " • Repeat: " + data.repeat });
+        .setFooter({ text: "Auto Mode: " + (data.mode === "auto" ? "ON" : "OFF") + " • List Mode: " + (data.listMode ? "ON" : "OFF") + " • Repeat: " + data.repeat });
       return interaction.reply({ embeds: [embed] });
     }
 

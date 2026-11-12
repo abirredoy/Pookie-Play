@@ -149,7 +149,8 @@ client.on("interactionCreate", async interaction => {
         .addFields(
           { name: "Music", value: "/play query — গান চালাও\n/queue — Queue দেখো\n/join /leave — Voice control", inline: false },
           { name: "Autoplay", value: "/mode viral | bangla | global | mixed | off\n/autoplay enabled:true|false", inline: false },
-          { name: "Queue tools", value: "/shuffle /remove /move /clearqueue /repeat /seek /nowplaying", inline: false },\n          { name: "Controls", value: "/pause /resume /skip /stop /volume value এবং Player buttons", inline: false }
+          { name: "Queue tools", value: "/shuffle /remove /move /clearqueue /repeat /seek /nowplaying", inline: false },
+          { name: "Controls", value: "/pause /resume /skip /stop /volume value এবং Player buttons", inline: false }
         ).setFooter({ text: "Spotify links identify songs; audio playback is provided by SoundCloud when available." });
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
@@ -216,7 +217,7 @@ client.on("interactionCreate", async interaction => {
       if (!data.current) return interaction.reply("এখন কোনো গান চলছে না।");
       const info = data.current;
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎶 এখন বাজছে")
-        .setDescription("**" + info.title + "**\\n" + (info.author || "Unknown artist"))
+        .setDescription("**" + info.title + "**\n" + (info.author || "Unknown artist"))
         .addFields({name:"Repeat",value:data.repeat,inline:true});
       if (info.uri) embed.setURL(info.uri);
       return interaction.reply({embeds:[embed],components:controlRows()});

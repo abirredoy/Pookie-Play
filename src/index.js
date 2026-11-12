@@ -228,12 +228,13 @@ client.on("interactionCreate", async interaction => {
       const data = music.getQueue(interaction.guildId);
       if (id === "queue" || id === "nowplaying") {
         const q = music.getQueue(interaction.guildId);
-        const current = q.current ? "**🎶 চলছে:** " + q.current.title : "এখন কোনো গান চলছে না।";
-        const upcoming = q.tracks.slice(0, 15).map((t, i) => (i + 1) + ". " + t.title).join("\n");
-        const embed = new EmbedBuilder().setColor(0x5865f2)
-          .setTitle(id === "queue" ? "📜 Pookie Play Queue" : "🎵 Now Playing")
-          .setDescription(current + (upcoming ? "\n\n**⏭️ পরের গান:**\n" + upcoming : "\n\nQueue খালি।"))
-          .setFooter(playerStatusFooter(q, id === "queue" ? "Queue দেখানো হয়েছে" : "Now Playing দেখানো হয়েছে"));
+        const status = id === "queue"
+          ? "Queue-তে " + q.tracks.length + "টি গান আছে"
+          : (q.current ? "Now Playing: " + q.current.title : "এখন কোনো গান চলছে না");
+        const embed = interaction.message.embeds[0]
+          ? EmbedBuilder.from(interaction.message.embeds[0])
+          : new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play");
+        embed.setFooter(playerStatusFooter(q, status));
         return interaction.update({ embeds: [embed], components: controlRows(q) });
       }
       const simpleActions = {

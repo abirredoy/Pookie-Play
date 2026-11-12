@@ -108,7 +108,7 @@ client.on("interactionCreate", async interaction => {
     if (interaction.isModalSubmit() && interaction.customId === "pookie_volume_modal") {
       if (!interaction.guildId) return;
       const raw = interaction.fields.getTextInputValue("volume_value").trim();
-      if (!/^\\d{1,3}$/.test(raw) || Number(raw) < 0 || Number(raw) > 100) {
+      if (!/^\d{1,3}$/.test(raw) || Number(raw) < 0 || Number(raw) > 100) {
         return interaction.reply({ content: "০ থেকে ১০০-এর মধ্যে সংখ্যা দাও।", ephemeral: true });
       }
       const value = await music.volume(interaction.guildId, Number(raw));

@@ -2,59 +2,52 @@
 <html lang="bn">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0b1020">
-<title>Pookie Play — Bot Start</title>
+<title>Pookie Play — Bot Status</title>
 <style>
 :root{color-scheme:dark;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#0b1020;color:#f7f8ff}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:20px;background:radial-gradient(ellipse at top,#28205a 0,transparent 55%),#0b1020}
 main{width:min(100%,440px);text-align:center;padding:34px 26px;border:1px solid #29324a;border-radius:24px;background:#131a2b;box-shadow:0 24px 80px #0008}
 .logo{margin:0 auto 14px;width:58px;height:58px;display:grid;place-items:center;border-radius:18px;background:#7564e8;font-size:30px}
 h1{font-size:27px;margin:0 0 8px}p{color:#aeb8ce;line-height:1.6;margin:0 0 24px}
-#status{font-size:14px;color:#aeb8ce;min-height:24px;margin:18px 0}
-button{width:100%;border:0;border-radius:14px;padding:17px;background:linear-gradient(100deg,#9383ff,#6755dc);color:white;font-size:16px;font-weight:800;cursor:pointer}
-button:disabled{opacity:.55;cursor:wait}.small{font-size:11px;color:#74809a;margin:18px 0 0}
+.status{display:flex;align-items:center;justify-content:center;gap:10px;padding:14px;border:1px solid #303a54;background:#0d1424;border-radius:14px;margin:0 0 18px;font-weight:800}
+.dot{width:10px;height:10px;border-radius:50%;background:#8993a8}.dot.online{background:#42d6a0;box-shadow:0 0 0 5px #42d6a020}.dot.starting{background:#f3bd57;box-shadow:0 0 0 5px #f3bd5720}
+a,button{width:100%;border:0;border-radius:14px;padding:16px;background:linear-gradient(100deg,#9383ff,#6755dc);color:white;font-size:15px;font-weight:800;cursor:pointer;text-decoration:none;display:block}
+a.disabled{background:#263149;color:#8994aa;pointer-events:none}
+#message{font-size:13px;color:#aeb8ce;min-height:24px;margin:16px 0 0}
+.small{font-size:11px;color:#74809a;margin:18px 0 0}
 </style>
 </head>
 <body><main>
 <div class="logo">♫</div>
 <h1>POOKIE PLAY</h1>
-<p>বট চালু করতে নিচের বাটনে চাপ দাও। বট আগে থেকেই চালু থাকলে সেটাও জানিয়ে দেব।</p>
-<button id="start">▶ বট চালু করো</button>
-<div id="status" role="status" aria-live="polite">বটের অবস্থা দেখা হচ্ছে…</div>
-<div class="small">Pookie Play • Secure control</div>
+<p>তোমার Discord মিউজিক বটের বর্তমান অবস্থা</p>
+<div class="status"><span id="dot" class="dot"></span><span id="state">অবস্থা দেখা হচ্ছে…</span></div>
+<a id="action" class="disabled" href="https://github.com/abirredoy/Pookie-Play/actions/workflows/start-bot.yml" target="_blank" rel="noopener">GitHub-এ Run workflow</a>
+<div id="message" role="status" aria-live="polite">GitHub থেকে অবস্থা নেওয়া হচ্ছে…</div>
+<div class="small">বন্ধ থাকলে GitHub Actions-এ গিয়ে Run workflow চাপো।</div>
 </main>
 <script>
-const button=document.getElementById("start"),statusEl=document.getElementById("status");
-let loggedIn=false,active=false,busy=false;
-async function checkStatus(){
+const stateEl=document.getElementById("state"),dot=document.getElementById("dot"),action=document.getElementById("action"),message=document.getElementById("message");
+async function refresh(){
  try{
-  const r=await fetch("/api/status",{cache:"no-store"}),d=await r.json();
-  active=!!d.active;
-  if(active){statusEl.textContent="Pookie Play is already running.";button.textContent="✓ বট ইতিমধ্যে চালু আছে";button.disabled=true;}
-  else if(!busy){statusEl.textContent=d.state==="unknown"||d.state==="setup_required"?"বটের অবস্থা এখন পাওয়া যাচ্ছে না।":"বট এখন বন্ধ আছে। চালু করতে বাটনে চাপ দাও।";button.textContent="▶ বট চালু করো";button.disabled=false;}
- }catch{if(!busy)statusEl.textContent="সার্ভারের সঙ্গে যোগাযোগ করা যাচ্ছে না।"}
+  const response=await fetch("/api/status",{cache:"no-store"});
+  const data=await response.json();
+  if(!response.ok||data.state==="unknown"||data.state==="setup_required")throw new Error(data.message||"স্ট্যাটাস পাওয়া যাচ্ছে না।");
+  if(data.active){
+   dot.className="dot "+(data.state==="starting"?"starting":"online");
+   stateEl.textContent=data.state==="starting"?"Pookie Play is starting…":"Pookie Play is already running.";
+   action.classList.add("disabled");action.removeAttribute("href");
+   message.textContent="বট চালু থাকা অবস্থায় আবার Run করার প্রয়োজন নেই।";
+  }else{
+   dot.className="dot";
+   stateEl.textContent="Pookie Play is offline.";
+   action.classList.remove("disabled");action.href="https://github.com/abirredoy/Pookie-Play/actions/workflows/start-bot.yml";
+   message.textContent="বট বন্ধ আছে। GitHub-এ গিয়ে Run workflow চাপলে বট চালু হবে।";
+  }
+ }catch(error){
+  dot.className="dot";stateEl.textContent="Status unavailable";action.classList.add("disabled");action.removeAttribute("href");message.textContent=error.message||"কিছুক্ষণ পর আবার চেষ্টা করো।";
+ }
 }
-async function startBot(){
- if(busy||active)return;
- busy=true;button.disabled=true;button.textContent="চালু হচ্ছে…";statusEl.textContent="অনুরোধ পাঠানো হচ্ছে…";
- try{
-  const r=await fetch("/api/start",{method:"POST"}),d=await r.json();
-  if(r.status===401){location.href="/api/auth/login?start=1";return;}
-  if(r.status===409||d.alreadyRunning){active=true;statusEl.textContent="Pookie Play is already running.";button.textContent="✓ বট ইতিমধ্যে চালু আছে";return;}
-  if(!r.ok)throw new Error(d.error||"Start request failed");
-  statusEl.textContent="Start request পাঠানো হয়েছে। বট চালু হচ্ছে…";button.textContent="⏳ বট চালু হচ্ছে";
-  setTimeout(checkStatus,4000);
- }catch(e){statusEl.textContent=e.message||"বট চালু করা যায়নি। আবার চেষ্টা করো।";button.disabled=false;button.textContent="আবার চেষ্টা করো";}
- finally{busy=false;}
-}
-button.addEventListener("click",startBot);
-(async()=>{
- const params=new URLSearchParams(location.search);
- const error=params.get("error");
- const errors={not_allowed:"এই Discord অ্যাকাউন্টকে বট চালুর অনুমতি দেওয়া হয়নি।",oauth_denied:"Discord লগইন বাতিল করা হয়েছে।",oauth_failed:"Discord লগইন সম্পন্ন হয়নি। আবার চেষ্টা করো।",oauth_state:"নিরাপত্তা যাচাই ব্যর্থ হয়েছে। আবার চেষ্টা করো।"};
- if(error&&errors[error])statusEl.textContent=errors[error];
- await checkStatus();
- if(params.get("start")==="1"){history.replaceState({}, "", "/control/");startBot();}
- setInterval(checkStatus,15000);
-})();
+refresh();setInterval(refresh,15000);
 </script>
 </body></html>

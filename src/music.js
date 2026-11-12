@@ -104,7 +104,7 @@ function createMusic(shoukaku) {
       s.fallbackTried = false;
       console.log("[Music] Starting:", track.info?.title || "untitled", "| source:", track.info?.sourceName || "unknown");
       await s.player.playTrack({ track: { encoded: track.encoded } });
-      await s.player.setGlobalVolume(s.volume * 10);
+      await s.player.setGlobalVolume(s.volume);
       return true;
     } catch (error) {
       console.error("[Music] Could not start track; moving to next result:", error?.message || error);
@@ -198,7 +198,7 @@ function createMusic(shoukaku) {
     });
     s.player = player;
     attachEvents(guildId, player);
-    await player.setGlobalVolume(s.volume * 10);
+    await player.setGlobalVolume(s.volume);
     console.log("[Music] Joined voice channel in guild", guildId);
     return player;
   }
@@ -265,7 +265,7 @@ function createMusic(shoukaku) {
     async volume(id, value) {
       const s = get(id);
       s.volume = Math.max(0, Math.min(100, value));
-      if (s.player) await s.player.setGlobalVolume(s.volume * 10);
+      if (s.player) await s.player.setGlobalVolume(s.volume);
       return s.volume;
     },
     async adjustVolume(id, delta) {

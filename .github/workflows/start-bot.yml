@@ -76,6 +76,7 @@ jobs:
           docker run -d --name pookie-lavalink \
             -p 2333:2333 \
             -v "$PWD/application.yml:/opt/Lavalink/application.yml:ro" \
+            -e JAVA_TOOL_OPTIONS="-Xmx1G" \\
             ghcr.io/lavalink-devs/lavalink:4
 
           for attempt in $(seq 1 90); do
@@ -97,7 +98,6 @@ jobs:
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           GUILD_ID: ${{ secrets.GUILD_ID }}
           LAVALINK_HOST: 127.0.0.1:2333
-          LAVALINK_PASSWORD: ${{ env.LAVALINK_PASSWORD }}
         run: |
           if [ -z "$DISCORD_TOKEN" ] || [ -z "$CLIENT_ID" ]; then
             echo "Missing repository secrets: DISCORD_TOKEN and/or CLIENT_ID"

@@ -17,6 +17,8 @@ if (!token || !clientId) {
 const commands = [
   new SlashCommandBuilder().setName("join").setDescription("Join your voice channel"),
   new SlashCommandBuilder().setName("leave").setDescription("Leave the voice channel"),
+  new SlashCommandBuilder().setName("search").setDescription("Search songs by name and choose one to play")
+    .addStringOption(o => o.setName("query").setDescription("Song name or artist").setRequired(true)),
   new SlashCommandBuilder().setName("play").setDescription("Play a song or a saved List Slot")
     .addStringOption(o => o.setName("query").setDescription("Song name or song link").setRequired(false))
     .addIntegerOption(o => o.setName("list").setDescription("Play saved List Slot 1-10").setMinValue(1).setMaxValue(10).setRequired(false)),
@@ -83,6 +85,7 @@ shoukaku.on("ready", name => console.log("[Lavalink] Connected:", name));
 shoukaku.on("error", (name, error) => console.error("[Lavalink] Error:", name, error));
 shoukaku.on("close", (name, code, reason) => console.warn("[Lavalink] Closed:", name, code, reason));
 const playerMessages = new Map();
+const searchResults = new Map();
 const music = createMusic(shoukaku, async (guildId, track, state) => {
   try {
     const channel = state.textChannelId ? await client.channels.fetch(state.textChannelId) : null;
@@ -288,6 +291,20 @@ client.on("interactionCreate", async interaction => {
         return interaction.reply({ content: "⛔ Pookie Play নিয়ন্ত্রণ করার অনুমতি তোমার নেই। নির্ধারিত Role লাগবে।", ephemeral: true });
       }
       const id = interaction.customId.replace("pookie_", "");
+      if (/^search_[0-4]$/.test(id)) {
+        const results = searchResults.get(interaction.guildId);
+        const index = Number(id.split("_")[1]);
+        const selected = results?.[index];
+        if (!selected) return interaction.reply({ content: "এই Search result আর পাওয়া যাচ্ছে না। আবার /search করো।", ephemeral: true });
+        const channel = await requireVoice(interaction);
+        await interaction.deferUpdate();
+        const started = await music.playResolved(interaction.guildId, channel, selected, interaction.channelId);
+        const embed = new EmbedBuilder().setColor(0x57f287).setTitle("🎶 গান নির্বাচন করা হয়েছে")
+          .setDescription("**" + String(selected.info?.title || "Unknown track") + "**\\n" + String(selected.info?.author || "Unknown artist"));
+        if (selected.info?.uri) embed.setURL(selected.info.uri);
+        await interaction.message.edit({ embeds: [embed], components: [] });
+        return;
+      }
       const data = music.getQueue(interaction.guildId);
       if (id === "queue" || id === "nowplaying") {
         const q = music.getQueue(interaction.guildId);
@@ -371,7 +388,7 @@ client.on("interactionCreate", async interaction => {
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play — Help")
         .setDescription("YouTube, YouTube Music ও SoundCloud থেকে গান খুঁজে চালানোর চেষ্টা করবে।")
         .addFields(
-          { name: "Music", value: "/play query — গান চালাও\n/queue — Queue দেখো\n/join /leave — Voice control", inline: false },
+          { name: "Music", value: "/search query — গান খুঁজে পছন্দেরটি চালাও\\n/play query — গান চালাও\n/queue — Queue দেখো\n/join /leave — Voice control", inline: false },
           { name: "Playback modes", value: "/mode auto অথবা queue — Auto Mode ও List Mode একসঙ্গে চালু হবে না", inline: false },
           { name: "Queue tools", value: "/add query — Queue Mode-এ গান যোগ করো\n/list add slot query — ১০টি List Slot-এ গান রাখো\n/list list /list remove /list clear /list mode\n/play list — List Slot নম্বর দিয়ে চালাও\n/queue /shuffle /remove /move /clearqueue /repeat /seek /nowplaying", inline: false },
           { name: "Controls", value: "/pause /resume /skip /stop /volume value এবং Player buttons", inline: false },
@@ -392,6 +409,29 @@ client.on("interactionCreate", async interaction => {
 
     if (!hasControlPermission(interaction)) {
       return interaction.reply({ content: "⛔ Pookie Play নিয়ন্ত্রণ করার অনুমতি তোমার নেই। নির্ধারিত Role লাগবে।", ephemeral: true });
+    }
+
+    if (name === "search") {
+      const query = interaction.options.getString("query", true);
+      const channel = await requireVoice(interaction);
+      await interaction.deferReply();
+      await music.join(interaction.guildId, channel);
+      music.setTextChannel(interaction.guildId, interaction.channelId);
+      const tracks = await music.searchTracks(interaction.guildId, query);
+      if (!tracks.length) return interaction.editReply("🔎 **" + query + "**-এর কোনো গান পাওয়া যায়নি। অন্যভাবে লিখে চেষ্টা করো।");
+      const results = tracks.slice(0, 5);
+      searchResults.set(interaction.guildId, results);
+      const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🔎 Search Results")
+        .setDescription("**" + query.slice(0, 150) + "** — নিচের বাটনে পছন্দের গানটি বেছে নাও।")
+        .addFields(results.map((track, i) => ({
+          name: (i + 1) + ". " + String(track.info?.title || "Unknown track").slice(0, 180),
+          value: String(track.info?.author || "Unknown artist").slice(0, 100) + (track.info?.uri ? "\\n" + track.info.uri : ""),
+          inline: false
+        })));
+      const row = new ActionRowBuilder().addComponents(results.map((track, i) =>
+        new ButtonBuilder().setCustomId("pookie_search_" + i).setLabel("Play " + (i + 1)).setStyle(i === 0 ? ButtonStyle.Success : ButtonStyle.Primary)
+      ));
+      return interaction.editReply({ embeds: [embed], components: [row] });
     }
 
     if (name === "play") {

@@ -522,7 +522,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     },
     getQueue(id) {
       const s = get(id);
-      return { current: s.current?.info || null, tracks: s.queue.map(t => t.info), mode: s.mode, repeat: s.repeat, volume: s.volume, muted: s.muted, paused: s.paused, history: s.history.map(t => t.info) };
+      return { current: s.current?.info || null, tracks: s.queue.map(t => t.info), mode: s.mode, repeat: s.repeat, volume: s.volume, muted: s.muted, paused: s.paused, node: s.player?.node?.name || "Disconnected", connected: Boolean(s.player), history: s.history.map(t => t.info) };
     }
   };
 }

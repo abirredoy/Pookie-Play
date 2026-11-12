@@ -29,7 +29,7 @@ const commands = [
     .addSubcommand(s => s.setName("remove").setDescription("Remove a saved slot")
       .addIntegerOption(o => o.setName("slot").setDescription("Slot number 1-10").setMinValue(1).setMaxValue(10).setRequired(true)))
     .addSubcommand(s => s.setName("show").setDescription("Show saved List slots"))
-    .addSubcommand(s => s.setName("clear").setDescription("Clear all 10 List Queue slots"))
+    .addSubcommand(s => s.setName("clear").setDescription("Clear all 10 List Queue slots")),
 
   new SlashCommandBuilder().setName("player").setDescription("Show music player controls"),
   new SlashCommandBuilder().setName("queue").setDescription("Show the music queue"),

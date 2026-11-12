@@ -195,7 +195,7 @@ async function saveControlRoles(guildId, roleIds) {
   saved[guildId] = roleIds;
   const body = {
     message: "Update Pookie Play control roles",
-    content: Buffer.from(JSON.stringify(saved, null, 2) + "\\n").toString("base64"),
+    content: Buffer.from(JSON.stringify(saved, null, 2) + "\n").toString("base64"),
     branch: process.env.GITHUB_REF_NAME || "main"
   };
   if (sha) body.sha = sha;
@@ -419,7 +419,7 @@ client.on("interactionCreate", async interaction => {
           { name: "Playback", value: "সাধারণ গান, Search result বা লিংক চালালে একই শিল্পী/ধরন/ভাষার গান নিজে থেকে খুঁজে চলবে। Player-এর List বাটন ON করলে শুধু সেভ করা List চলবে; OFF করলে Similar-track radio আবার চালু হবে।", inline: false },
           { name: "List tools", value: "/list add slot query — ১০টি List Slot-এ গান রাখো\n/list show /list remove /list clear\n/play list — নির্দিষ্ট List Slot থেকে চালাও\n/queue /shuffle /remove /move /clearqueue /repeat /seek /nowplaying", inline: false },
           { name: "Controls", value: "/pause /resume /skip /stop /volume value এবং Player buttons", inline: false },
-          { name: "Admin", value: "/controlroles show — অনুমতিপ্রাপ্ত Role দেখো\\n/controlroles add role — Role যোগ করো\\n/controlroles remove role — Role সরাও (শুধু Administrator/Server Owner)", inline: false }
+          { name: "Admin", value: "/controlroles show — অনুমতিপ্রাপ্ত Role দেখো\n/controlroles add role — Role যোগ করো\n/controlroles remove role — Role সরাও (শুধু Administrator/Server Owner)", inline: false }
         ).setFooter({ text: "Sources: YouTube • YouTube Music • SoundCloud (যেটি পাওয়া যায়)।" });
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
@@ -434,7 +434,7 @@ client.on("interactionCreate", async interaction => {
       if (sub === "show") {
         const ids = [...(controlRoles.get(interaction.guildId) || new Set())];
         if (!ids.length) return interaction.reply({ content: "📋 এখনো কোনো Control Role সেট করা হয়নি। তালিকা ফাঁকা থাকলে আগের মতো সবাই বট কন্ট্রোল করতে পারবে।", ephemeral: true });
-        return interaction.reply({ content: "📋 **Pookie Play Control Role List**\\n" + ids.map((id, i) => (i + 1) + ". <@&" + id + ">").join("\\n"), ephemeral: true });
+        return interaction.reply({ content: "📋 **Pookie Play Control Role List**\n" + ids.map((id, i) => (i + 1) + ". <@&" + id + ">").join("\n"), ephemeral: true });
       }
       const role = interaction.options.getRole("role", true);
       const ids = [...(controlRoles.get(interaction.guildId) || new Set())];

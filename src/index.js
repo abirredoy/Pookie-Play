@@ -55,7 +55,6 @@ const commands = [
   new SlashCommandBuilder().setName("volume").setDescription("Set volume")
     .addIntegerOption(o => o.setName("value").setDescription("0 to 100").setMinValue(0).setMaxValue(100).setRequired(true)),
   new SlashCommandBuilder().setName("controlroles").setDescription("Manage roles allowed to control Pookie Play")
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addSubcommand(s => s.setName("show").setDescription("Show all control roles"))
     .addSubcommand(s => s.setName("add").setDescription("Add a role allowed to control the bot")
       .addRoleOption(o => o.setName("role").setDescription("Role to allow").setRequired(true)))

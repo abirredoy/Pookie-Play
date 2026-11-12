@@ -52,7 +52,7 @@ const commands = [
   new SlashCommandBuilder().setName("volume").setDescription("Set volume")
     .addIntegerOption(o => o.setName("value").setDescription("0 to 100").setMinValue(0).setMaxValue(100).setRequired(true)),
   new SlashCommandBuilder().setName("controlrole").setDescription("Choose the role allowed to control Pookie Play")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addRoleOption(o => o.setName("role").setDescription("Role allowed to control the bot").setRequired(true)),
   new SlashCommandBuilder().setName("help").setDescription("Show Pookie Play commands")
 ].map(command => command.toJSON());
@@ -239,8 +239,8 @@ client.on("interactionCreate", async interaction => {
     }
 
     if (name === "controlrole") {
-      if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-        return interaction.reply({ content: "⛔ এই সেটিং বদলাতে Manage Server permission লাগবে।", ephemeral: true });
+      if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+        return interaction.reply({ content: "⛔ শুধু Server Owner বা Administrator এই সেটিং বদলাতে পারবে।", ephemeral: true });
       }
       const role = interaction.options.getRole("role", true);
       await interaction.deferReply({ ephemeral: true });

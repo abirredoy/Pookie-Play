@@ -46,10 +46,8 @@ function createMusic(shoukaku) {
   async function linkMetadata(url) {
     try {
       let endpoint;
-      if (/open\.spotify\.com\/(track|album|playlist)\//i.test(url)) {
+      if (/open\.spotify\.com\/track\//i.test(url)) {
         endpoint = "https://open.spotify.com/oembed?url=" + encodeURIComponent(url);
-      } else if (/(youtube\.com\/watch|youtu\.be\/)/i.test(url)) {
-        endpoint = "https://www.youtube.com/oembed?url=" + encodeURIComponent(url) + "&format=json";
       } else return "";
       const response = await fetch(endpoint, { headers: { "User-Agent": "PookiePlay/1.0" }, signal: AbortSignal.timeout(8000) });
       if (!response.ok) return "";

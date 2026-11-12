@@ -52,19 +52,18 @@ const commands = [
 ].map(command => command.toJSON());
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
-// Community-hosted Lavalink v4 nodes (free, best-effort; availability can change).
-// A private/local node can still be supplied through LAVALINK_HOST + LAVALINK_PASSWORD.
-const nodes = process.env.LAVALINK_HOST && process.env.LAVALINK_PASSWORD
-  ? [{
-      name: "Custom-Lavalink",
-      url: process.env.LAVALINK_HOST,
-      auth: process.env.LAVALINK_PASSWORD,
-      secure: process.env.LAVALINK_SECURE === "true"
-    }]
-  : [
-      { name: "Nazha-Global", url: "lavalink.nazha.online:443", auth: "nazhafreelava", secure: true },
-      { name: "Vinster", url: "freelavalinkvinster.in:443", auth: "youshallnotpass", secure: true }
-    ];
+// Pookie Play uses its own private Lavalink instance started by the GitHub Actions workflow.
+// No public/community nodes are used as a fallback.
+if (!process.env.LAVALINK_HOST || !process.env.LAVALINK_PASSWORD) {
+  console.error("Missing private Lavalink configuration (LAVALINK_HOST / LAVALINK_PASSWORD).");
+  process.exit(1);
+}
+const nodes = [{
+  name: "Pookie-Private",
+  url: process.env.LAVALINK_HOST,
+  auth: process.env.LAVALINK_PASSWORD,
+  secure: process.env.LAVALINK_SECURE === "true"
+}];
 const shoukaku = new Shoukaku(new Connectors.DiscordJS(client), nodes, {
   moveOnDisconnect: true,
   reconnectTries: 5,

@@ -9,7 +9,7 @@ function createMusic(shoukaku) {
   const states = new Map();
   const get = (id) => {
     if (!states.has(id)) states.set(id, {
-      player: null, queue: [], current: null, volume: 70,
+      player: null, queue: [], current: null, currentQuery: "", fallbackTried: false, volume: 70,
       mode: "off", seedIndex: 0, busy: false
     });
     return states.get(id);
@@ -42,6 +42,7 @@ function createMusic(shoukaku) {
       const track = s.queue.shift();
       if (!track) { s.current = null; return false; }
       s.current = track;
+      s.fallbackTried = false;
       await s.player.playTrack({ track: { encoded: track.encoded } });
       await s.player.setGlobalVolume(s.volume * 10);
       return true;
@@ -54,18 +55,28 @@ function createMusic(shoukaku) {
     }
   }
 
+  async function recoverTrack(guildId, detail) {
+    const s = get(guildId);
+    console.error("[Music] Track failed:", detail || "unknown error");
+    if (s.current?.info?.sourceName === "youtube" && !s.fallbackTried && s.currentQuery) {
+      s.fallbackTried = true;
+      const fallback = await s.player.node.rest.resolve("scsearch:" + s.currentQuery).catch(() => null);
+      if (fallback?.tracks?.length) s.queue.unshift(fallback.tracks[0]);
+    }
+    s.current = null;
+    await playNext(guildId);
+  }
+
   function attachEvents(guildId, player) {
     player.on("end", event => {
-      if (event.reason === "FINISHED") playNext(guildId).catch(console.error);
+      if (event.reason === "FINISHED") {
+        const s = get(guildId);
+        s.current = null;
+        playNext(guildId).catch(console.error);
+      }
     });
-    player.on("exception", event => {
-      console.error("[Music] Track exception:", event.exception || event.error);
-      playNext(guildId).catch(console.error);
-    });
-    player.on("stuck", () => {
-      console.warn("[Music] Track stuck; trying next track.");
-      playNext(guildId).catch(console.error);
-    });
+    player.on("exception", event => recoverTrack(guildId, event.exception || event.error).catch(console.error));
+    player.on("stuck", event => recoverTrack(guildId, event).catch(console.error));
   }
 
   async function join(guildId, channel) {
@@ -104,7 +115,9 @@ function createMusic(shoukaku) {
       const tracks = await resolve(query, s.player.node);
       if (!tracks.length) throw new Error("YouTube বা SoundCloud-এ এই গানটি পাওয়া যায়নি। অন্য নাম দিয়ে চেষ্টা করো।");
       const wasIdle = !s.current;
-      s.queue.push(...tracks.slice(0, 10));
+      s.currentQuery = query;
+      s.fallbackTried = false;
+      s.queue.push(tracks[0]);
       if (wasIdle) await playNext(id);
       return { track: tracks[0], queued: !wasIdle, queueLength: s.queue.length };
     },

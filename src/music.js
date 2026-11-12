@@ -191,7 +191,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     s.busy = true;
     let retry = false;
     try {
-      if (!s.queue.length) {
+      if (!s.queue.length && s.mode === "auto") {
         const candidate = await findAutoplayTrack(s, s.lastPlayed || s.current);
         if (candidate) s.queue.push(candidate);
       }
@@ -301,7 +301,10 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
           else if (s.repeat === "queue") s.queue.push(finished);
         }
         s.current = null;
-        playNext(guildId).catch(console.error);
+        // Auto mode behaves like a continuous radio. Queue mode waits for a manual Next.
+        if (s.mode === "auto" || s.repeat === "track" || s.repeat === "queue") {
+          playNext(guildId).catch(console.error);
+        }
       }
     });
     player.on("exception", event => recoverTrack(guildId, event.exception || event.error, event.track).catch(console.error));

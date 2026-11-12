@@ -113,23 +113,25 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     const artist = String(info?.author || "").split(/[,&|]/)[0].trim();
     const title = String(info?.title || "").trim();
     const language = info ? languageHint(info) : "";
-    const queries = info
-      ? [
-          artist ? artist + " songs" : "",
-          "songs similar to " + title + (artist ? " " + artist : ""),
-          artist ? "artists similar to " + artist + " popular songs" : "",
-          language ? "popular " + language + " songs" : "",
-          "popular songs similar genre to " + title
-        ].filter(Boolean)
-      : [
-          "popular hit songs", "trending pop music hits", "popular Hindi songs",
-          "popular Bangla songs", "popular English songs", "popular K-pop songs"
-        ];
-    const seenQueries = new Set();
+    const styleWords = ["remix", "remixed", "funk", "phonk", "slowed", "reverb", "sped up", "nightcore", "lofi", "lo-fi", "mashup", "cover", "acoustic", "rock", "rap", "hip hop", "edm", "dj", "bass", "drill"];
+    const titleLower = title.toLowerCase();
+    const styles = styleWords.filter(word => titleLower.includes(word));
+    const queries = info ? [
+      artist ? artist + " songs" : "",
+      artist && styles.length ? artist + " " + styles.join(" ") + " songs" : "",
+      title ? "songs similar to " + title + (artist ? " " + artist : "") : "",
+      title && styles.length ? styles.join(" ") + " songs similar to " + title : "",
+      language && styles.length ? language + " " + styles.join(" ") + " songs" : "",
+      language ? language + " songs similar to " + title : "",
+      styles.length ? "popular " + styles.join(" ") + " music" : "",
+      language ? "popular " + language + " songs" : ""
+    ].filter(Boolean) : ["popular Bangla songs", "popular Hindi songs", "popular English songs"];
+    const seen = new Set();
     for (const query of queries) {
-      if (seenQueries.has(query.toLowerCase())) continue;
-      seenQueries.add(query.toLowerCase());
-      console.log("[AutoPlay] Searching related track:", query);
+      const key = query.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      console.log("[Radio] Searching related track:", query);
       const tracks = await resolve(query, s.player.node);
       const fresh = tracks.filter(t => {
         const name = String(t.info?.title || "").trim().toLowerCase();
@@ -137,18 +139,15 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       });
       if (fresh.length) return fresh[Math.floor(Math.random() * Math.min(fresh.length, 5))];
     }
-    // Similarity search can fail on some Lavalink sources. Fall back to a broad
-    // random music search rather than letting Auto Mode go silent.
-    console.warn("[AutoPlay] Related searches returned no fresh tracks; trying random music fallback.");
-    return findRandomTrack(s);
+    console.warn("[Radio] No fresh related track found for:", title || "initial radio seed");
+    return null;
   }
-
   async function fillAutoQueue(guildId, targetSize = 5) {
     const s = get(guildId);
-    if (s.autoFilling || s.mode !== "auto" || s.listMode || s.repeat === "track" || !s.player?.node) return;
+    if (s.autoFilling || s.listMode || s.repeat === "track" || !s.player?.node) return;
     s.autoFilling = true;
     try {
-      while (s.mode === "auto" && !s.listMode && s.repeat !== "track" && s.player?.node && s.queue.length < targetSize) {
+      while (!s.listMode && s.repeat !== "track" && s.player?.node && s.queue.length < targetSize) {
         const seed = s.current || s.autoSimilarTo || s.lastPlayed;
         const candidate = await findAutoplayTrack(s, seed);
         if (!candidate) {
@@ -217,7 +216,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     s.busy = true;
     let retry = false;
     try {
-      if (!s.queue.length && s.mode === "auto" && !s.listMode) {
+      if (!s.queue.length && !s.listMode) {
         // With no current track, start a random station pick. After a track ends,
         // autoSimilarTo is set to that finished track so the next pick is related.
         const seed = s.autoSimilarTo;
@@ -319,7 +318,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       onTrackStart(guildId, s.current || event.track, {
         textChannelId: s.textChannelId, volume: s.volume, repeat: s.repeat, mode: s.mode
       }).catch(error => console.error("[Player message]", error));
-      if (s.mode === "auto" && !s.listMode) {
+      if (!s.listMode) {
         fillAutoQueue(guildId).catch(error => console.error("[AutoPlay] Queue fill error:", error));
       }
     });
@@ -334,7 +333,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
           s.history.unshift(finished);
           s.history = s.history.slice(0, 25);
           if (!s.listMode) {
-            if (s.mode === "auto") {
+            if (!s.listMode) {
               if (s.repeat === "track") s.queue.unshift(finished);
               else s.autoSimilarTo = finished;
             } else if (s.repeat === "track") {
@@ -386,7 +385,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
             s.queue = [];
             console.log("[List Mode] Playlist finished.");
           }
-        } else if (s.mode === "auto" || s.queue.length > 0 || s.repeat === "track" || s.repeat === "queue" || s.repeat === "shuffle") {
+        } else if (!s.listMode || s.queue.length > 0 || s.repeat === "track" || s.repeat === "queue" || s.repeat === "shuffle") {
           playNext(guildId).catch(console.error);
         }
       }
@@ -447,7 +446,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     async play(id, channel, query, textChannelId) {
       await join(id, channel);
       const s = get(id);
-      if (s.listMode) { s.listMode = false; s.listCurrentSlot = null; s.listOrder = []; s.mode = "auto"; }
+      if (s.listMode) { s.listMode = false; s.listCurrentSlot = null; s.listOrder = []; }
       if (textChannelId) s.textChannelId = textChannelId;
       const tracks = await resolve(query, s.player.node);
       if (!tracks.length) throw new Error("YouTube ও SoundCloud—কোনো সোর্স থেকেই গানটি পাওয়া যায়নি। অন্য নাম বা সরাসরি audio link দিয়ে চেষ্টা করো।");
@@ -465,7 +464,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
         return { track: tracks[0], queued: false, queueLength: s.queue.length };
       }
 
-      if (s.mode === "auto") {
+      if (!s.listMode) {
         // In Auto Mode, a manual search/link becomes the new radio seed immediately.
         s.queue = [tracks[0]];
         s.autoSimilarTo = null;
@@ -558,7 +557,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
         s.queue = [s.listSlots[next]];
         return playNext(id);
       }
-      if (s.mode === "auto") {
+      if (!s.listMode) {
         s.lastPlayed = skipped;
         s.queue = [];
       }
@@ -623,7 +622,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     async setMode(id, mode) {
       const s = get(id);
       s.mode = mode === "auto" ? "auto" : "queue";
-      if (s.mode === "auto") {
+      if (!s.listMode) {
         s.listMode = false;
         s.listCurrentSlot = null;
         s.listOrder = [];
@@ -702,12 +701,13 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
         s.queue = [];
         s.autoSimilarTo = s.current || s.autoSimilarTo;
         if (s.player && !s.current) await playNext(id);
+        else if (s.player && s.current) fillAutoQueue(id).catch(console.error);
         return false;
       }
       const slots = Object.keys(s.listSlots).map(Number).sort((a,b)=>a-b);
       if (!slots.length) throw new Error("List খালি। আগে /list add দিয়ে গান যোগ করো।");
       if (!s.player) throw new Error("আগে voice channel-এ যোগ দাও।");
-      s.mode = "queue";
+      s.mode = "auto";
       s.listMode = true;
       s.listOrder = slots.slice();
       if (s.repeat === "shuffle") {
@@ -728,7 +728,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       if (!s.listSlots[n]) throw new Error("List Slot " + n + " খালি। আগে /list add দিয়ে গান রাখো।");
       await join(id, channel);
       if (textChannelId) s.textChannelId = textChannelId;
-      s.mode = "queue";
+      s.mode = "auto";
       s.listMode = true;
       s.listOrder = Object.keys(s.listSlots).map(Number).sort((a,b)=>a-b);
       if (s.repeat === "shuffle") {

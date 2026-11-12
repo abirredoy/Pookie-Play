@@ -65,9 +65,6 @@ const nodes = process.env.LAVALINK_HOST && process.env.LAVALINK_PASSWORD
       secure: process.env.LAVALINK_SECURE === "true"
     }]
   : [
-      { name: "Nazha-SG1", url: "sg-1.nazha.online:443", auth: "https://discord.gg/XeSCnk57ZF", secure: true },
-      { name: "Nazha-SG2", url: "sg-2.nazha.online:443", auth: "https://discord.gg/XeSCnk57ZF", secure: true },
-      { name: "Nazha-SG3", url: "sg-3.nazha.online:443", auth: "https://discord.gg/XeSCnk57ZF", secure: true },
       { name: "Nazha-Global", url: "lavalink.nazha.online:443", auth: "nazhafreelava", secure: true },
       { name: "Vinster", url: "freelavalinkvinster.in:443", auth: "youshallnotpass", secure: true }
     ];
@@ -84,9 +81,10 @@ const music = createMusic(shoukaku);
 function controlRows() {
   return [
     new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("pookie_previous").setLabel("Previous").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId("pookie_pause").setLabel("Pause").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId("pookie_resume").setLabel("Resume").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId("pookie_skip").setLabel("Skip").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("pookie_skip").setLabel("Next").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("pookie_stop").setLabel("Stop").setStyle(ButtonStyle.Danger)
     ),
     new ActionRowBuilder().addComponents(
@@ -120,9 +118,16 @@ client.on("interactionCreate", async interaction => {
       if (!interaction.guildId) return;
       if (interaction.customId === "pookie_volume_down" || interaction.customId === "pookie_volume_up") {
         const value = await music.adjustVolume(interaction.guildId, interaction.customId === "pookie_volume_up" ? 10 : -10);
-        return interaction.reply({ content: "🔊 Volume: " + value + "%", ephemeral: true });
+        const embed = interaction.message.embeds[0]
+          ? EmbedBuilder.from(interaction.message.embeds[0])
+          : new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play Player");
+        return interaction.update({
+          embeds: [embed.setFooter({ text: "Volume: " + value + "%" })],
+          components: controlRows()
+        });
       }
       const actions = {
+        pookie_previous: () => music.previous(interaction.guildId),
         pookie_pause: () => music.pause(interaction.guildId),
         pookie_resume: () => music.resume(interaction.guildId),
         pookie_skip: () => music.skip(interaction.guildId),
@@ -132,6 +137,7 @@ client.on("interactionCreate", async interaction => {
       if (!action) return;
       const ok = await action();
       const messages = {
+        pookie_previous: "⏮️ আগের গান চালানো হয়েছে।",
         pookie_pause: "⏸️ গান pause করা হয়েছে।",
         pookie_resume: "▶️ গান resume করা হয়েছে।",
         pookie_skip: "⏭️ পরের গান চালানোর চেষ্টা করছি।",

@@ -18,8 +18,8 @@ if (!token || !clientId) {
 const commands = [
   new SlashCommandBuilder().setName("join").setDescription("Join your voice channel"),
   new SlashCommandBuilder().setName("leave").setDescription("Leave the voice channel"),
-  new SlashCommandBuilder().setName("play").setDescription("Play a song from YouTube or SoundCloud")
-    .addStringOption(o => o.setName("query").setDescription("Song name or YouTube/SoundCloud link").setRequired(true)),
+  new SlashCommandBuilder().setName("play").setDescription("Play media from a supported link")
+    .addStringOption(o => o.setName("query").setDescription("Public audio/video/media URL (link only)").setRequired(true)),
   new SlashCommandBuilder().setName("player").setDescription("Show music player controls"),
   new SlashCommandBuilder().setName("queue").setDescription("Show the music queue"),
   new SlashCommandBuilder().setName("pause").setDescription("Pause playback"),
@@ -182,7 +182,7 @@ client.on("interactionCreate", async interaction => {
       const upcoming = data.tracks.slice(0, 10).map((t, i) => (i + 1) + ". " + t.title).join("\n");
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎵 Pookie Play Queue")
         .setDescription(current + (upcoming ? "\n\n**পরের গানগুলো:**\n" + upcoming : "\n\nQueue খালি।"))
-        .setFooter({ text: "Autoplay: " + data.mode });
+        .setFooter({ text: "Link-only playback });
       return interaction.reply({ embeds: [embed] });
     }
 

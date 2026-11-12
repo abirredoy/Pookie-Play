@@ -262,6 +262,10 @@ function controlRows(q = {}) {
       button("random_next", "🎲 Random Play", ButtonStyle.Primary)
     ),
     new ActionRowBuilder().addComponents(
+      button("join", "🔊 Join Voice", ButtonStyle.Success),
+      button("leave", "🚪 Leave Voice", ButtonStyle.Danger)
+    ),
+    new ActionRowBuilder().addComponents(
       new ButtonBuilder().setLabel("🎛️ Control Panel").setStyle(ButtonStyle.Link).setURL("https://script.google.com/macros/s/AKfycbzXzjqmb3XpOX45KDlIWarLwGJb9fkLZuBi9APK1IUgq4A97gqbR1PhvAbvE6PhleLu/exec")
     )
   ];
@@ -333,6 +337,13 @@ client.on("interactionCreate", async interaction => {
         return updated;
       }
       const simpleActions = {
+        join: async () => {
+          const channel = await requireVoice(interaction);
+          const player = await music.join(interaction.guildId, channel);
+          music.setTextChannel(interaction.guildId, interaction.channelId);
+          return player;
+        },
+        leave: () => music.leave(interaction.guildId),
         previous: () => music.previous(interaction.guildId),
         pause: () => music.pause(interaction.guildId),
         resume: () => music.resume(interaction.guildId),
@@ -346,7 +357,12 @@ client.on("interactionCreate", async interaction => {
         },
         auto_toggle: () => music.setMode(interaction.guildId, data.mode === "auto" ? "queue" : "auto"),
         list_toggle: async () => (await music.setListMode(interaction.guildId, !data.listMode), !data.listMode),
-        random_next: () => music.randomNext(interaction.guildId)
+        random_next: async () => {
+          const channel = await requireVoice(interaction);
+          await music.join(interaction.guildId, channel);
+          music.setTextChannel(interaction.guildId, interaction.channelId);
+          return music.randomNext(interaction.guildId);
+        }
       };
       const action = simpleActions[id];
       if (!action) return;
@@ -355,11 +371,12 @@ client.on("interactionCreate", async interaction => {
       let success = false;
       try {
         result = await action();
-        success = ["repeat_cycle", "auto_toggle", "list_toggle", "volume_down", "volume_up"].includes(id) ? true : result !== false;
+        success = ["repeat_cycle", "auto_toggle", "list_toggle", "volume_down", "volume_up", "leave"].includes(id) ? true : result !== false;
       } catch (error) {
         console.error("[Player button] Action failed:", id, error);
       }
       const labels = {
+        join: "Joined your voice channel", leave: "Left the voice channel",
         previous: "Previous track", pause: "Playback paused",
         resume: "Playback resumed", skip: "Next track selected",
         stop: "Playback stopped", volume_down: "Volume: " + (result?.before ?? "?") + "% → " + (result?.after ?? "?") + "%",
@@ -375,7 +392,7 @@ client.on("interactionCreate", async interaction => {
         vol75: "Volume: 75%", vol100: "Volume: 100%", leave: "Disconnected from voice channel"
       };
       const q = music.getQueue(interaction.guildId);
-      const status = success ? (labels[id] || "Action completed") : "Action failed — check voice connection or queue";
+      const status = success ? (labels[id] || "Action completed") : (id === "random_next" ? "No random track found — check Lavalink/search source" : "Action failed — check voice connection or queue");
       const embed = interaction.message.embeds[0]
         ? EmbedBuilder.from(interaction.message.embeds[0])
         : new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play");

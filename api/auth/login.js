@@ -1,5 +1,5 @@
 const crypto = require("node:crypto");
-const { setCookie } = require("../_lib/auth");
+const { setCookie } = require("../../lib/control-auth");
 
 module.exports = (req, res) => {
   if (req.method !== "GET") return res.status(405).end();

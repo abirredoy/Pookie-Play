@@ -12,6 +12,15 @@ const commands = [
   new SlashCommandBuilder().setName("play").setDescription("Search Spotify or open a Spotify link")
     .addStringOption(o => o.setName("query").setDescription("Song name, artist, or Spotify link").setRequired(true)),
   new SlashCommandBuilder().setName("player").setDescription("Show music player controls"),
+  new SlashCommandBuilder().setName("mode").setDescription("Choose Spotify music discovery mode")
+    .addStringOption(o => o.setName("type").setDescription("Choose a music discovery mode").setRequired(true)
+      .addChoices(
+        { name: "Viral / Popular", value: "viral" },
+        { name: "Bangladesh Trending", value: "bangla" },
+        { name: "Global Trending", value: "global" },
+        { name: "Bangla + Global Mix", value: "mixed" },
+        { name: "Off", value: "off" }
+      )),
   new SlashCommandBuilder().setName("pause").setDescription("Pause playback"),
   new SlashCommandBuilder().setName("resume").setDescription("Resume playback"),
   new SlashCommandBuilder().setName("skip").setDescription("Skip the current track"),
@@ -23,6 +32,35 @@ const commands = [
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 const music = createMusic();
+const guildModes = new Map();
+const MODE_SEARCHES = {
+  viral: [
+    "Spotify Viral 50 Global playlist",
+    "Spotify most streamed hits 2026",
+    "Spotify trending popular songs"
+  ],
+  bangla: [
+    "Spotify Bangladesh Top 50 playlist",
+    "Bangla viral trending songs",
+    "Bangladesh popular hits"
+  ],
+  global: [
+    "Spotify Global Top 50 playlist",
+    "Spotify Viral 50 Global playlist",
+    "Today's Top Hits Spotify"
+  ],
+  mixed: [
+    "Bangladesh Top 50 Spotify playlist",
+    "Global Top 50 Spotify playlist",
+    "Bangla and international viral hits"
+  ]
+};
+const MODE_LABELS = {
+  viral: "Viral / Popular",
+  bangla: "Bangladesh Trending",
+  global: "Global Trending",
+  mixed: "Bangla + Global Mix"
+};
 
 function spotifySearchUrl(query) {
   const value = query.trim();
@@ -92,7 +130,7 @@ client.on("interactionCreate", async interaction => {
       const embed = new EmbedBuilder().setColor(0x1db954).setTitle("🎧 Pookie Play — Help")
         .setDescription("Spotify search and player controls")
         .addFields(
-          { name: "Spotify", value: "/play query — গান খোঁজো বা Spotify লিংক খোলো", inline: false },
+          { name: "Spotify", value: "/play query — গান খোঁজো বা Spotify লিংক খোলো\n/mode viral | bangla | global | mixed | off — মিউজিক ডিসকভারি মোড", inline: false },
           { name: "Player controls", value: "/player অথবা প্লেয়ারের বাটন — Pause, Resume, Skip, Stop, Volume", inline: false },
           { name: "Voice", value: "/join /leave", inline: false }
         ).setFooter({ text: "Spotify search/link only — Spotify audio is not streamed in Discord." });
@@ -105,6 +143,24 @@ client.on("interactionCreate", async interaction => {
         .setDescription("[Spotify-তে খুলুন / সার্চ করুন](" + url + ")\n\n**সার্চ:** " + query.slice(0, 250))
         .addFields({ name: "মিউজিক প্লেয়ার", value: "নিচের বাটনগুলো দিয়ে চলমান অডিও নিয়ন্ত্রণ করা যাবে। Spotify-এর অডিও সরাসরি Discord voice-এ বাজানো যাবে না।" });
       return interaction.reply({ embeds: [embed], components: controlRows(url) });
+    }
+    if (name === "mode") {
+      const selected = interaction.options.getString("type", true);
+      if (selected === "off") {
+        guildModes.delete(interaction.guildId);
+        return interaction.reply("⚪ Spotify discovery mode বন্ধ করা হয়েছে।");
+      }
+      guildModes.set(interaction.guildId, selected);
+      const searches = MODE_SEARCHES[selected] || MODE_SEARCHES.mixed;
+      const links = searches.map((term, index) => {
+        const url = spotifySearchUrl(term);
+        return (index + 1) + ". [" + term + "](" + url + ")";
+      });
+      const embed = new EmbedBuilder().setColor(0x1db954)
+        .setTitle("🎧 Pookie Play — " + MODE_LABELS[selected] + " Mode")
+        .setDescription("এই সার্ভারের Spotify discovery mode সেট হয়েছে।\n\n" + links.join("\\n"))
+        .setFooter({ text: "Search links only; Spotify audio does not play inside Discord voice." });
+      return interaction.reply({ embeds: [embed] });
     }
     if (name === "player") {
       const embed = new EmbedBuilder().setColor(0x1db954).setTitle("🎧 Pookie Play Player")

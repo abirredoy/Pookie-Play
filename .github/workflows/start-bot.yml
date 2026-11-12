@@ -19,7 +19,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Java for Lavalink
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
@@ -51,14 +51,23 @@ jobs:
           echo $! > lavalink.pid
           echo "Waiting for private Lavalink to become ready..."
           for i in {1..90}; do
-            if curl -fsS -H "Authorization: $PASSWORD" http://127.0.0.1:2333/version >/dev/null; then
+            if curl -fsS -H "Authorization: $PASSWORD" http://127.0.0.1:2333/version >/dev/null 2>&1; then
               echo "Private Lavalink is ready."
               exit 0
             fi
+            if ! kill -0 "$(cat lavalink.pid)" 2>/dev/null; then
+              echo "Lavalink process exited during startup. Server log:"
+              cat lavalink.log
+              exit 1
+            fi
+            if (( i % 5 == 0 )); then
+              echo "Lavalink is still starting (check $i/90). Recent server log:"
+              tail -n 35 lavalink.log
+            fi
             sleep 2
           done
-          echo "Lavalink did not become ready. Recent server log:"
-          tail -n 100 lavalink.log
+          echo "Lavalink did not become ready within 180 seconds. Recent server log:"
+          tail -n 120 lavalink.log
           exit 1
 
       - name: Start Pookie Play

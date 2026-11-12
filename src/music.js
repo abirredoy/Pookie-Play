@@ -456,11 +456,34 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       s.history.unshift(skipped);
       s.history = s.history.slice(0, 25);
       if (s.quickMode) {
-        const slots = Object.keys(s.quickSlots).map(Number).sort((a,b)=>a-b);
-        const next = slots.find(n => n > Number(s.quickCurrentSlot || 0)) ?? (s.repeat === "queue" ? slots[0] : null);
+        let order = s.quickOrder.length
+          ? s.quickOrder.slice()
+          : Object.keys(s.quickSlots).map(Number).sort((a,b)=>a-b);
+        const currentIndex = order.indexOf(Number(s.quickCurrentSlot));
+        let next = currentIndex >= 0 ? order[currentIndex + 1] : null;
+        if (!next && (s.repeat === "queue" || s.repeat === "shuffle")) {
+          if (s.repeat === "shuffle") {
+            order = Object.keys(s.quickSlots).map(Number).sort((a,b)=>a-b);
+            for (let i = order.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [order[i], order[j]] = [order[j], order[i]];
+            }
+            if (order.length > 1 && order[0] === Number(s.quickCurrentSlot)) {
+              [order[0], order[1]] = [order[1], order[0]];
+            }
+            s.quickOrder = order;
+          }
+          next = order[0] ?? null;
+        }
         await s.player.stopTrack();
         s.current = null;
-        if (!next) { s.quickMode = false; s.quickCurrentSlot = null; s.queue = []; return false; }
+        if (!next || !s.quickSlots[next]) {
+          s.quickMode = false;
+          s.quickCurrentSlot = null;
+          s.quickOrder = [];
+          s.queue = [];
+          return false;
+        }
         s.quickCurrentSlot = next;
         s.queue = [s.quickSlots[next]];
         return playNext(id);
@@ -492,6 +515,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       s.repeat = "off";
       s.quickMode = false;
       s.quickCurrentSlot = null;
+      s.quickOrder = [];
       await s.player.stopTrack();
       return true;
     },
@@ -531,6 +555,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       s.mode = mode === "auto" ? "auto" : "queue";
       s.quickMode = false;
       s.quickCurrentSlot = null;
+      s.quickOrder = [];
       if (s.mode === "auto") {
         s.queue = [];
         s.autoSimilarTo = null;

@@ -404,6 +404,10 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     async setMode(id, mode) {
       const s = get(id);
       s.mode = mode === "auto" ? "auto" : "off";
+      if (s.mode === "auto" && s.current) {
+        // In radio mode, continue with related tracks rather than stale search results.
+        s.queue = [];
+      }
       if (s.mode === "auto" && s.player && !s.current && !s.queue.length) {
         await playNext(id);
       }

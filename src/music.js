@@ -367,6 +367,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     async add(id, channel, query, textChannelId) {
       const s = get(id);
       if (s.mode !== "queue") throw new Error("আগে /mode type:Queue Mode চালু করো। Auto Mode-এ /add ব্যবহার করা যাবে না।");
+      if (s.quickMode) throw new Error("Quick Mode চালু আছে। সাধারণ Queue-তে গান দিতে আগে /quick mode enabled:false করো।");
       await join(id, channel);
       if (textChannelId) s.textChannelId = textChannelId;
       const tracks = await resolve(query, s.player.node);
@@ -379,6 +380,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     async play(id, channel, query, textChannelId) {
       await join(id, channel);
       const s = get(id);
+      if (s.quickMode) { s.quickMode = false; s.quickCurrentSlot = null; }
       if (textChannelId) s.textChannelId = textChannelId;
       const tracks = await resolve(query, s.player.node);
       if (!tracks.length) throw new Error("YouTube ও SoundCloud—কোনো সোর্স থেকেই গানটি পাওয়া যায়নি। অন্য নাম বা সরাসরি audio link দিয়ে চেষ্টা করো।");

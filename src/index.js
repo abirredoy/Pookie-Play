@@ -85,9 +85,9 @@ const music = createMusic(shoukaku, async (guildId, track, state) => {
         { name: "🔊 Volume", value: String(state.volume) + "%", inline: true },
         { name: "🔁 Repeat", value: state.repeat, inline: true }
       )
-      .setFooter({ text: "🤖 AutoPlay: " + state.mode + " • নতুন গান শুরু হলে নতুন Player আসবে" });
+      .setFooter({ text: "🤖 AutoPlay: " + (state.mode === "auto" ? "ON" : "OFF") + "\n📍 Status: Player ready" });
     if (info.uri) embed.setURL(info.uri);
-    await channel.send({ embeds: [embed], components: controlRows() });
+    await channel.send({ embeds: [embed], components: controlRows(music.getQueue(guildId)) });
   } catch (error) {
     console.error("[Player message] Could not post track card:", error?.message || error);
   }
@@ -161,33 +161,42 @@ function hasControlPermission(interaction) {
   return Array.isArray(memberRoles) && memberRoles.includes(roleId);
 }
 
-function controlRows() {
+function playerStatusFooter(q, status = "Ready") {
+  const autoplay = q.mode === "auto" ? "ON" : "OFF";
+  const repeat = q.repeat === "track" ? "Song" : q.repeat === "queue" ? "Queue" : "OFF";
+  return { text: "🤖 AutoPlay: " + autoplay + " • Repeat: " + repeat + "\n📍 Status: " + String(status).slice(0, 150) };
+}
+
+function controlRows(q = {}) {
   const button = (id, label, style = ButtonStyle.Secondary) =>
     new ButtonBuilder().setCustomId("pookie_" + id).setLabel(label).setStyle(style);
+  const active = ButtonStyle.Danger;
+  const inactive = ButtonStyle.Primary;
   return [
     new ActionRowBuilder().addComponents(
       button("previous", "⏮️ Previous"), button("pause", "⏸️ Pause"),
-      button("resume", "▶️ Resume", ButtonStyle.Success), button("skip", "⏭️ Next", ButtonStyle.Primary),
-      button("stop", "⏹️ Stop", ButtonStyle.Danger)
+      button("resume", "▶️ Resume", q.paused ? active : ButtonStyle.Secondary),
+      button("skip", "⏭️ Next", ButtonStyle.Primary), button("stop", "⏹️ Stop", ButtonStyle.Danger)
     ),
     new ActionRowBuilder().addComponents(
       button("volume_down", "🔉 Volume −"), button("volume_up", "🔊 Volume +"),
-      button("mute", "🔇 Mute"), button("shuffle", "🔀 Shuffle"),
-      button("clearqueue", "🧹 Clear Queue", ButtonStyle.Danger)
+      button("mute", q.muted ? "🔊 Unmute" : "🔇 Mute", q.muted ? active : inactive),
+      button("shuffle", "🔀 Shuffle"), button("clearqueue", "🧹 Clear Queue", ButtonStyle.Danger)
     ),
     new ActionRowBuilder().addComponents(
-      button("repeat_off", "➡️ Repeat Off"), button("repeat_track", "🔂 Repeat Song"),
-      button("repeat_queue", "🔁 Repeat Queue"), button("autoplay", "🤖 AutoPlay", ButtonStyle.Success),
+      button("repeat_off", "➡️ Repeat Off", q.repeat === "off" ? active : inactive),
+      button("repeat_track", "🔂 Repeat Song", q.repeat === "track" ? active : inactive),
+      button("repeat_queue", "🔁 Repeat Queue", q.repeat === "queue" ? active : inactive),
+      button("autoplay", "🤖 AutoPlay", q.mode === "auto" ? active : inactive),
       button("seek_back", "⏪ −10 sec")
     ),
     new ActionRowBuilder().addComponents(
       button("seek_forward", "⏩ +10 sec"), button("restart", "🔄 Restart"),
-      button("nowplaying", "🎵 Now Playing", ButtonStyle.Primary), button("queue", "📜 Queue", ButtonStyle.Primary),
-      button("leave", "👋 Leave VC", ButtonStyle.Danger)
+      button("nowplaying", "🎵 Now Playing", ButtonStyle.Primary),
+      button("queue", "📜 Queue", ButtonStyle.Primary), button("leave", "👋 Leave VC", ButtonStyle.Danger)
     )
   ];
 }
-
 async function requireVoice(interaction) {
   const channel = interaction.member?.voice?.channel;
   if (!channel) throw new Error("আগে একটি voice channel-এ যোগ দাও।");
@@ -217,6 +226,16 @@ client.on("interactionCreate", async interaction => {
       }
       const id = interaction.customId.replace("pookie_", "");
       const data = music.getQueue(interaction.guildId);
+      if (id === "queue" || id === "nowplaying") {
+        const q = music.getQueue(interaction.guildId);
+        const current = q.current ? "**🎶 চলছে:** " + q.current.title : "এখন কোনো গান চলছে না।";
+        const upcoming = q.tracks.slice(0, 15).map((t, i) => (i + 1) + ". " + t.title).join("\n");
+        const embed = new EmbedBuilder().setColor(0x5865f2)
+          .setTitle(id === "queue" ? "📜 Pookie Play Queue" : "🎵 Now Playing")
+          .setDescription(current + (upcoming ? "\n\n**⏭️ পরের গান:**\n" + upcoming : "\n\nQueue খালি।"))
+          .setFooter(playerStatusFooter(q, id === "queue" ? "Queue দেখানো হয়েছে" : "Now Playing দেখানো হয়েছে"));
+        return interaction.update({ embeds: [embed], components: controlRows(q) });
+      }
       const simpleActions = {
         previous: () => music.previous(interaction.guildId),
         pause: () => music.pause(interaction.guildId),
@@ -241,48 +260,38 @@ client.on("interactionCreate", async interaction => {
         vol100: () => music.volume(interaction.guildId, 100),
         leave: () => music.leave(interaction.guildId)
       };
-      if (id === "queue" || id === "nowplaying") {
-        const q = music.getQueue(interaction.guildId);
-        const current = q.current ? "**🎶 চলছে:** " + q.current.title : "এখন কোনো গান চলছে না।";
-        const upcoming = q.tracks.slice(0, 15).map((t, i) => (i + 1) + ". " + t.title).join("\n");
-        const embed = new EmbedBuilder().setColor(0x5865f2)
-          .setTitle(id === "queue" ? "📜 Pookie Play Queue" : "🎵 Now Playing")
-          .setDescription(current + (upcoming ? "\n\n**⏭️ পরের গান:**\n" + upcoming : "\n\nQueue খালি।"))
-          .setFooter({ text: "🔁 Repeat: " + q.repeat + " • 🤖 Auto Mode: " + (q.mode === "auto" ? "ON" : "OFF") + " • 🔊 Volume: " + q.volume + "%" });
-        return interaction.reply({ embeds: [embed], ephemeral: true });
-      }
       const action = simpleActions[id];
       if (!action) return;
-      const result = await action();
+      await interaction.deferUpdate();
+      let result;
+      let success = false;
+      try {
+        result = await action();
+        success = ["shuffle", "clearqueue", "repeat_off", "repeat_track", "repeat_queue", "autoplay", "volume_down", "volume_up", "mute", "vol25", "vol50", "vol75", "vol100", "leave"].includes(id)
+          ? true : result !== false;
+      } catch (error) {
+        console.error("[Player button] Action failed:", id, error);
+      }
       const labels = {
-        previous: "⏮️ আগের গান চালানোর চেষ্টা করা হয়েছে।",
-        pause: "⏸️ Pause করা হয়েছে।",
-        resume: "▶️ Resume করা হয়েছে।",
-        skip: "⏭️ পরের গান চালানোর চেষ্টা করা হয়েছে।",
-        stop: "⏹️ Playback বন্ধ করা হয়েছে।",
-        volume_down: "🔉 Volume কমানো হয়েছে।",
-        volume_up: "🔊 Volume বাড়ানো হয়েছে।",
-        mute: result?.muted ? "🔇 Mute করা হয়েছে।" : "🔊 Unmute করা হয়েছে।",
-        shuffle: "🔀 Queue shuffle করা হয়েছে।",
-        clearqueue: "🧹 Upcoming queue পরিষ্কার করা হয়েছে।",
-        repeat_off: "➡️ Repeat বন্ধ।",
-        repeat_track: "🔂 বর্তমান গান repeat হবে।",
-        repeat_queue: "🔁 পুরো queue repeat হবে।",
-        autoplay: result === "off" ? "🤖 Similar Auto Mode বন্ধ।" : "🤖 Similar Auto Mode চালু—বর্তমান গানের মতো গান খুঁজবে।",
-        seek_back: "⏪ ১০ সেকেন্ড পেছনে নেওয়া হয়েছে।",
-        seek_forward: "⏩ ১০ সেকেন্ড সামনে নেওয়া হয়েছে।",
-        restart: "🔄 গানটি শুরু থেকে চালানো হচ্ছে।",
-        vol25: "🔈 Volume 25%।",
-        vol50: "🔉 Volume 50%।",
-        vol75: "🔊 Volume 75%।",
-        vol100: "📢 Volume 100%।",
-        leave: "👋 Voice channel ছেড়ে দেওয়া হয়েছে।"
+        previous: "আগের গান চালানো হয়েছে", pause: "Playback pause করা হয়েছে",
+        resume: "Playback resume করা হয়েছে", skip: "পরের গান চালানো হয়েছে",
+        stop: "Playback বন্ধ করা হয়েছে", volume_down: "Volume কমানো হয়েছে",
+        volume_up: "Volume বাড়ানো হয়েছে", mute: result?.muted ? "Mute ON" : "Mute OFF",
+        shuffle: "Queue shuffle করা হয়েছে", clearqueue: "Queue পরিষ্কার করা হয়েছে",
+        repeat_off: "Repeat OFF", repeat_track: "Repeat Song ON", repeat_queue: "Repeat Queue ON",
+        autoplay: result === "off" ? "AutoPlay OFF" : "AutoPlay ON",
+        seek_back: "১০ সেকেন্ড পেছনে নেওয়া হয়েছে", seek_forward: "১০ সেকেন্ড সামনে নেওয়া হয়েছে",
+        restart: "গান শুরু থেকে চালানো হচ্ছে", vol25: "Volume 25%", vol50: "Volume 50%",
+        vol75: "Volume 75%", vol100: "Volume 100%", leave: "Voice channel ছেড়ে দেওয়া হয়েছে"
       };
-      const success = ["shuffle", "clearqueue", "repeat_off", "repeat_track", "repeat_queue", "autoplay", "autoplay_mode", "volume_down", "volume_up", "mute", "vol25", "vol50", "vol75", "vol100", "leave"].includes(id)
-        ? true : result !== false;
-      return interaction.reply({ content: success ? (labels[id] || "✅ সম্পন্ন হয়েছে।") : "এখন এই কাজটি করা যাচ্ছে না।", ephemeral: true });
+      const q = music.getQueue(interaction.guildId);
+      const status = success ? (labels[id] || "কাজ সম্পন্ন হয়েছে") : "এই কাজটি করা যায়নি";
+      const embed = interaction.message.embeds[0]
+        ? EmbedBuilder.from(interaction.message.embeds[0])
+        : new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play");
+      embed.setFooter(playerStatusFooter(q, status));
+      return interaction.message.edit({ embeds: [embed], components: controlRows(q) });
     }
-
     if (!interaction.isChatInputCommand()) return;
     const name = interaction.commandName;
 

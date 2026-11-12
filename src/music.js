@@ -1,15 +1,35 @@
-const MODE_SEEDS = {
-  viral: ["viral popular songs 2026", "top hits 2026", "most popular songs"],
-  bangla: ["Bangla viral songs", "Bangladesh top songs", "popular Bangla hits"],
-  global: ["global top hits", "worldwide viral songs", "global popular music"],
-  mixed: ["Bangla and global hits", "international viral songs", "Bangladesh popular songs"]
-};
+function languageHint(info = {}) {
+  const text = String((info.title || "") + " " + (info.author || ""));
+  if (/[\\u0980-\\u09FF]/.test(text)) return "Bangla";
+  if (/[\\u0900-\\u097F]/.test(text)) return "Hindi";
+  if (/[\\u0600-\\u06FF]/.test(text)) return "Arabic";
+  return "";
+}
+
+function normalizeUserQuery(query) {
+  const q = String(query || "").trim();
+  const key = q.toLowerCase();
+  const presets = {
+    bangla: "Bangla songs popular hits",
+    "বাংলা": "Bangla songs popular hits",
+    hindi: "Hindi songs popular hits",
+    হিন্দি: "Hindi songs popular hits",
+    global: "global international popular songs",
+    worldwide: "global international popular songs",
+    english: "English international songs",
+    korean: "Korean K-pop songs",
+    kpop: "K-pop songs",
+    arabic: "Arabic songs",
+    japanese: "Japanese songs"
+  };
+  return presets[key] || q;
+}
 
 function createMusic(shoukaku, onTrackStart = async () => {}) {
   const states = new Map();
   const get = (id) => {
     if (!states.has(id)) states.set(id, {
-      player: null, queue: [], current: null, currentQuery: "", fallbackTried: false, volume: 70,
+      player: null, queue: [], current: null, lastPlayed: null, currentQuery: "", fallbackTried: false, volume: 70,
       muted: false, previousVolume: 70, textChannelId: null, mode: "off", repeat: "off", history: [], seedIndex: 0, busy: false, recovering: false
     });
     return states.get(id);
@@ -64,7 +84,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       console.error("[Music] No Lavalink node available for search.");
       return [];
     }
-    let searchQuery = query;
+    let searchQuery = normalizeUserQuery(query);
     if (/^https?:\/\//i.test(query)) {
       const direct = await tryResolve(query, node);
       if (direct.length) return direct;
@@ -90,12 +110,18 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     s.busy = true;
     let retry = false;
     try {
-      if (!s.queue.length && s.mode !== "off") {
-        const seeds = MODE_SEEDS[s.mode] || MODE_SEEDS.mixed;
-        const query = seeds[s.seedIndex++ % seeds.length];
+      if (!s.queue.length && s.mode === "auto" && s.lastPlayed?.info) {
+        const info = s.lastPlayed.info;
+        const title = String(info.title || "").slice(0, 100);
+        const artist = String(info.author || "").slice(0, 80);
+        const language = languageHint(info);
+        const query = "songs similar to " + title + " " + artist + (language ? " " + language : "");
         s.currentQuery = query;
+        console.log("[AutoPlay] Finding a similar track:", query);
         const tracks = await resolve(query, s.player.node);
-        if (tracks.length) s.queue.push(...tracks.slice(0, 5));
+        const recent = new Set([s.lastPlayed, ...s.history.slice(0, 5)].map(t => String(t?.info?.title || "").toLowerCase()));
+        const candidate = tracks.find(t => !recent.has(String(t.info?.title || "").toLowerCase()));
+        if (candidate) s.queue.push(candidate);
       }
       const track = s.queue.shift();
       if (!track) { s.current = null; return false; }
@@ -155,6 +181,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
         const s = get(guildId);
         const finished = s.current;
         if (finished) {
+          s.lastPlayed = finished;
           s.history.unshift(finished);
           s.history = s.history.slice(0, 25);
           if (s.repeat === "track") s.queue.unshift(finished);
@@ -290,14 +317,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       }
       return { muted: s.muted, volume: s.volume };
     },
-    cycleMode(id) {
-      const s = get(id);
-      const modes = ["mixed", "bangla", "global", "viral", "off"];
-      const next = (modes.indexOf(s.mode) + 1) % modes.length;
-      s.mode = modes[next];
-      s.seedIndex = 0;
-      return s.mode;
-    },
+    cycleMode(id) { const s = get(id); s.mode = s.mode === "auto" ? "off" : "auto"; return s.mode; },
     async seekRelative(id, delta) {
       const s = get(id);
       if (!s.player || !s.current) return false;
@@ -306,8 +326,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     },
     setMode(id, mode) {
       const s = get(id);
-      s.mode = mode;
-      s.seedIndex = 0;
+      s.mode = mode === "auto" ? "auto" : "off";
       return s.mode;
     },
     getMode(id) { return get(id).mode; },

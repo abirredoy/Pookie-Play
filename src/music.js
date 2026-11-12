@@ -30,7 +30,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
   const get = (id) => {
     if (!states.has(id)) states.set(id, {
       player: null, queue: [], current: null, lastPlayed: null, currentQuery: "", fallbackTried: false, volume: 70,
-      muted: false, paused: false, previousVolume: 70, textChannelId: null, mode: "off", repeat: "off", history: [], seedIndex: 0, busy: false, recovering: false
+      muted: false, paused: false, previousVolume: 70, textChannelId: null, mode: "queue", repeat: "off", history: [], seedIndex: 0, busy: false, recovering: false
     });
     return states.get(id);
   };
@@ -318,7 +318,12 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
         return { track: tracks[0], queued: false, queueLength: s.queue.length };
       }
 
-      s.queue.push(tracks[0], ...tracks.slice(1, 4));
+      if (s.mode === "auto") {
+        // Radio mode plays the requested track first, then discovers related tracks itself.
+        s.queue = [tracks[0]];
+      } else {
+        s.queue.push(tracks[0], ...tracks.slice(1, 4));
+      }
       if (wasIdle) await playNext(id);
       return { track: tracks[0], queued: !wasIdle, queueLength: s.queue.length };
     },
@@ -394,7 +399,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       }
       return { muted: s.muted, volume: s.volume };
     },
-    cycleMode(id) { const s = get(id); s.mode = s.mode === "auto" ? "off" : "auto"; return s.mode; },
+    cycleMode(id) { const s = get(id); s.mode = s.mode === "auto" ? "queue" : "auto"; return s.mode; },
     async seekRelative(id, delta) {
       const s = get(id);
       if (!s.player || !s.current) return false;
@@ -403,9 +408,9 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     },
     async setMode(id, mode) {
       const s = get(id);
-      s.mode = mode === "auto" ? "auto" : "off";
+      s.mode = mode === "auto" ? "auto" : "queue";
       if (s.mode === "auto" && s.current) {
-        // In radio mode, continue with related tracks rather than stale search results.
+        // Radio mode follows the current song, not queued search leftovers.
         s.queue = [];
       }
       if (s.mode === "auto" && s.player && !s.current && !s.queue.length) {
@@ -414,6 +419,22 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       return s.mode;
     },
     getMode(id) { return get(id).mode; },
+    async randomNext(id) {
+      const s = get(id);
+      if (!s.player) return false;
+      const reference = s.current || s.lastPlayed;
+      const candidate = await findAutoplayTrack(s, reference);
+      if (!candidate) return false;
+      if (s.current) {
+        s.history.unshift(s.current);
+        s.history = s.history.slice(0, 25);
+        s.lastPlayed = s.current;
+      }
+      s.queue = [candidate];
+      if (s.current) await s.player.stopTrack();
+      s.current = null;
+      return playNext(id);
+    },
     async seek(id, position) {
       const s = get(id);
       if (!s.player || !s.current) return false;

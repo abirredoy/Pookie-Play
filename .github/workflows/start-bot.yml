@@ -31,44 +31,8 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Download and start private Lavalink
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -fL --retry 3 --retry-delay 2 \
-            https://github.com/lavalink-devs/Lavalink/releases/latest/download/Lavalink.jar \
-            -o Lavalink.jar
-          PASSWORD="$(openssl rand -hex 24)"
-          echo "LAVALINK_SERVER_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
-          echo "LAVALINK_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
-          echo "LAVALINK_HOST=127.0.0.1:2333" >> "$GITHUB_ENV"
-          echo "LAVALINK_SECURE=false" >> "$GITHUB_ENV"
-          export LAVALINK_SERVER_PASSWORD="$PASSWORD"
-          export LAVALINK_PASSWORD="$PASSWORD"
-          export LAVALINK_HOST="127.0.0.1:2333"
-          export LAVALINK_SECURE="false"
-          nohup java -jar Lavalink.jar > lavalink.log 2>&1 &
-          echo $! > lavalink.pid
-          echo "Waiting for private Lavalink to become ready..."
-          for i in {1..90}; do
-            if curl -fsS -H "Authorization: $PASSWORD" http://127.0.0.1:2333/version >/dev/null 2>&1; then
-              echo "Private Lavalink is ready."
-              exit 0
-            fi
-            if ! kill -0 "$(cat lavalink.pid)" 2>/dev/null; then
-              echo "Lavalink process exited during startup. Server log:"
-              cat lavalink.log
-              exit 1
-            fi
-            if (( i % 5 == 0 )); then
-              echo "Lavalink is still starting (check $i/90). Recent server log:"
-              tail -n 35 lavalink.log
-            fi
-            sleep 2
-          done
-          echo "Lavalink did not become ready within 180 seconds. Recent server log:"
-          tail -n 120 lavalink.log
-          exit 1
+      - name: Use public Lavalink nodes
+        run: echo "Connecting to the public Lavalink nodes configured in src/index.js"
 
       - name: Start Pookie Play
         env:

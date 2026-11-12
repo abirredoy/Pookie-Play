@@ -44,7 +44,7 @@ const commands = [
     .addIntegerOption(o => o.setName("to").setDescription("New position").setMinValue(1).setRequired(true)),
   new SlashCommandBuilder().setName("repeat").setDescription("Set repeat mode")
     .addStringOption(o => o.setName("mode").setDescription("Repeat mode").setRequired(true)
-      .addChoices({name:"Off",value:"off"},{name:"Current track",value:"track"},{name:"Queue",value:"queue"})),
+      .addChoices({name:"Off",value:"off"},{name:"Current track",value:"track"},{name:"Queue",value:"queue"},{name:"Shuffle playlist",value:"shuffle"})),
   new SlashCommandBuilder().setName("seek").setDescription("Jump to a position in the current track")
     .addIntegerOption(o => o.setName("seconds").setDescription("Position in seconds").setMinValue(0).setRequired(true)),
   new SlashCommandBuilder().setName("mode").setDescription("Switch between Auto Mode and Queue Mode")

@@ -126,14 +126,6 @@ function createMusic(shoukaku) {
     s.busy = true;
     let failedTrack = null;
     try {
-      if (!s.queue.length && s.mode !== "off") {
-        const seeds = MODE_SEEDS[s.mode] || MODE_SEEDS.mixed;
-        const query = seeds[s.seedIndex++ % seeds.length];
-        s.currentQuery = query;
-        const tracks = await resolve(query, s.player.node);
-        enqueueSearchResults(s, tracks, query);
-      }
-
       const track = s.queue.shift();
       if (!track) {
         s.current = null;
@@ -199,34 +191,6 @@ function createMusic(shoukaku) {
         s.fallbackByEncoded.set(nextCandidate.encoded, fallback);
         s.queue.unshift(nextCandidate);
         console.log("[Music] Trying next search result:", nextCandidate.info?.title || "untitled");
-      } else if (failedTrack?.info?.sourceName === "youtube" && !fallback.soundcloudTried) {
-        fallback.soundcloudTried = true;
-        const info = failedTrack.info;
-        const rawTitle = String(info.title || fallback.query || "");
-        const fallbackQuery = rawTitle.split(/[|–—]/)[0]
-          .replace(/\s*\([^)]*\)\s*$/, "").trim();
-
-        if (fallbackQuery) {
-          console.log("[Music] YouTube results exhausted; trying SoundCloud:", fallbackQuery);
-          let soundcloudTracks = await tryResolve("scsearch:" + fallbackQuery, s.player?.node);
-          if (!soundcloudTracks.length && info.author) {
-            soundcloudTracks = await tryResolve("scsearch:" + fallbackQuery + " " + info.author, s.player?.node);
-          }
-          if (soundcloudTracks.length) {
-            enqueueSearchResults(s, soundcloudTracks, fallbackQuery, true);
-            const first = s.queue[0];
-            if (first?.encoded) {
-              s.fallbackByEncoded.set(first.encoded, {
-                tracks: fallback.tracks,
-                soundcloudTried: true,
-                query: fallback.query || fallbackQuery
-              });
-            }
-            console.log("[Music] SoundCloud fallback found:", first?.info?.title || "untitled");
-          } else {
-            console.warn("[Music] SoundCloud fallback found no playable search results.");
-          }
-        }
       }
 
       s.current = null;
@@ -306,7 +270,7 @@ function createMusic(shoukaku) {
       const s = get(id);
       const tracks = await resolve(query, s.player.node);
       if (!tracks.length) {
-        throw new Error("YouTube বা SoundCloud-এ এই গানটির playable ফল পাওয়া যায়নি। অন্য নাম বা লিংক দিয়ে চেষ্টা করো।");
+        throw new Error("এই লিংক থেকে public playable audio পাওয়া যায়নি। Direct media link দাও; login/DRM-এ আটকানো লিংক চলবে না।");
       }
 
       const isDirectUrl = /^https?:\/\//i.test(query);

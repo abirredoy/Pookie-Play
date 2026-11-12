@@ -306,9 +306,8 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
           s.history = s.history.slice(0, 25);
           if (!s.listMode) {
             if (s.mode === "auto") {
-              // Auto Mode always discovers a related next track; playlist repeat
-              // settings are reserved for Queue/List Mode.
-              s.autoSimilarTo = finished;
+              if (s.repeat === "track") s.queue.unshift(finished);
+              else s.autoSimilarTo = finished;
             } else if (s.repeat === "track") {
               s.queue.unshift(finished);
             } else if (s.repeat === "queue") {
@@ -587,6 +586,9 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       const s = get(id);
       s.mode = mode === "auto" ? "auto" : "queue";
       if (s.mode === "auto") {
+        s.listMode = false;
+        s.listCurrentSlot = null;
+        s.listOrder = [];
         s.queue = [];
         s.autoSimilarTo = null;
         if (s.player && !s.current) await playNext(id);
@@ -666,6 +668,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       const slots = Object.keys(s.listSlots).map(Number).sort((a,b)=>a-b);
       if (!slots.length) throw new Error("List খালি। আগে /list add দিয়ে গান যোগ করো।");
       if (!s.player) throw new Error("আগে voice channel-এ যোগ দাও।");
+      s.mode = "queue";
       s.listMode = true;
       s.listOrder = slots.slice();
       if (s.repeat === "shuffle") {
@@ -686,6 +689,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       if (!s.listSlots[n]) throw new Error("List Slot " + n + " খালি। আগে /list add দিয়ে গান রাখো।");
       await join(id, channel);
       if (textChannelId) s.textChannelId = textChannelId;
+      s.mode = "queue";
       s.listMode = true;
       s.listOrder = Object.keys(s.listSlots).map(Number).sort((a,b)=>a-b);
       if (s.repeat === "shuffle") {

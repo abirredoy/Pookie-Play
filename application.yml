@@ -8,12 +8,14 @@ lavalink:
   plugins:
     - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.2"
       snapshot: false
+    - dependency: "com.waris4ly.soundy:plugin:1.1.0"
+      repository: "https://maven.lavalink.dev/releases"
   server:
     password: "${LAVALINK_SERVER_PASSWORD}"
     sources:
       youtube: false
       bandcamp: true
-      soundcloud: true
+      soundcloud: false
       twitch: true
       vimeo: true
       nico: true
@@ -45,6 +47,8 @@ lavalink:
     soundcloudSearchEnabled: true
 
 plugins:
+  soundy:
+    enabled: true
   youtube:
     enabled: true
     allowSearch: true

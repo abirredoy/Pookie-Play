@@ -1,7 +1,7 @@
 require("dotenv").config();
 const {
   Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder,
-  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle
+  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits
 } = require("discord.js");
 const express = require("express");
 const { Shoukaku, Connectors } = require("shoukaku");
@@ -51,6 +51,9 @@ const commands = [
   new SlashCommandBuilder().setName("stop").setDescription("Stop playback and clear the queue"),
   new SlashCommandBuilder().setName("volume").setDescription("Set volume")
     .addIntegerOption(o => o.setName("value").setDescription("0 to 100").setMinValue(0).setMaxValue(100).setRequired(true)),
+  new SlashCommandBuilder().setName("controlrole").setDescription("Choose the role allowed to control Pookie Play")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addRoleOption(o => o.setName("role").setDescription("Role allowed to control the bot").setRequired(true)),
   new SlashCommandBuilder().setName("help").setDescription("Show Pookie Play commands")
 ].map(command => command.toJSON());
 
@@ -77,6 +80,74 @@ shoukaku.on("ready", name => console.log("[Lavalink] Connected:", name));
 shoukaku.on("error", (name, error) => console.error("[Lavalink] Error:", name, error));
 shoukaku.on("close", (name, code, reason) => console.warn("[Lavalink] Closed:", name, code, reason));
 const music = createMusic(shoukaku);
+const controlRoles = new Map();
+
+async function loadControlRoles() {
+  const repo = process.env.GITHUB_REPOSITORY;
+  const token = process.env.GITHUB_TOKEN;
+  if (!repo || !token) {
+    console.warn("[Permissions] GitHub persistence is unavailable; /controlrole cannot be saved.");
+    return;
+  }
+  const url = "https://api.github.com/repos/" + repo + "/contents/data/control-roles.json";
+  const response = await fetch(url, {
+    headers: { Authorization: "Bearer " + token, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" }
+  });
+  if (response.status === 404) return;
+  if (!response.ok) throw new Error("Could not load saved control roles from GitHub: HTTP " + response.status);
+  const file = await response.json();
+  const saved = JSON.parse(Buffer.from(file.content, "base64").toString("utf8"));
+  for (const [guildId, roleId] of Object.entries(saved)) controlRoles.set(guildId, roleId);
+  console.log("[Permissions] Loaded saved control roles:", controlRoles.size);
+}
+
+async function saveControlRole(guildId, roleId) {
+  const repo = process.env.GITHUB_REPOSITORY;
+  const token = process.env.GITHUB_TOKEN;
+  if (!repo || !token) throw new Error("GitHub storage is not available. Start the bot through its GitHub Actions workflow.");
+  const url = "https://api.github.com/repos/" + repo + "/contents/data/control-roles.json";
+  const headers = {
+    Authorization: "Bearer " + token,
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28"
+  };
+  const current = await fetch(url, { headers });
+  let saved = {};
+  let sha;
+  if (current.ok) {
+    const file = await current.json();
+    sha = file.sha;
+    saved = JSON.parse(Buffer.from(file.content, "base64").toString("utf8"));
+  } else if (current.status !== 404) {
+    throw new Error("Could not read role settings from GitHub: HTTP " + current.status);
+  }
+  saved[guildId] = roleId;
+  const body = {
+    message: "Save Pookie Play control role",
+    content: Buffer.from(JSON.stringify(saved, null, 2) + "\n").toString("base64"),
+    branch: process.env.GITHUB_REF_NAME || "main"
+  };
+  if (sha) body.sha = sha;
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error("Could not save control role to GitHub: HTTP " + response.status + " " + detail.slice(0, 300));
+  }
+  controlRoles.set(guildId, roleId);
+}
+
+function hasControlPermission(interaction) {
+  if (interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) return true;
+  const roleId = controlRoles.get(interaction.guildId);
+  if (!roleId) return true; // Until the owner configures a role, preserve current bot behavior.
+  const memberRoles = interaction.member?.roles;
+  if (memberRoles?.cache) return memberRoles.cache.has(roleId);
+  return Array.isArray(memberRoles) && memberRoles.includes(roleId);
+}
 
 function controlRows() {
   return [
@@ -102,6 +173,8 @@ async function requireVoice(interaction) {
 
 client.once("ready", async () => {
   console.log("Logged in as " + client.user.tag);
+  try { await loadControlRoles(); }
+  catch (error) { console.error("[Permissions] Failed to load role settings:", error); }
   const rest = new REST({ version: "10" }).setToken(token);
   try {
     const route = process.env.GUILD_ID
@@ -116,6 +189,9 @@ client.on("interactionCreate", async interaction => {
   try {
     if (interaction.isButton()) {
       if (!interaction.guildId) return;
+      if (!hasControlPermission(interaction)) {
+        return interaction.reply({ content: "⛔ Pookie Play নিয়ন্ত্রণ করার অনুমতি তোমার নেই। নির্ধারিত Role লাগবে।", ephemeral: true });
+      }
       if (interaction.customId === "pookie_volume_down" || interaction.customId === "pookie_volume_up") {
         const value = await music.adjustVolume(interaction.guildId, interaction.customId === "pookie_volume_up" ? 10 : -10);
         const embed = interaction.message.embeds[0]
@@ -159,6 +235,20 @@ client.on("interactionCreate", async interaction => {
           { name: "Controls", value: "/pause /resume /skip /stop /volume value এবং Player buttons", inline: false }
         ).setFooter({ text: "Sources: YouTube • YouTube Music • SoundCloud (যেটি পাওয়া যায়)।" });
       return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
+    if (name === "controlrole") {
+      if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+        return interaction.reply({ content: "⛔ এই সেটিং বদলাতে Manage Server permission লাগবে।", ephemeral: true });
+      }
+      const role = interaction.options.getRole("role", true);
+      await interaction.deferReply({ ephemeral: true });
+      await saveControlRole(interaction.guildId, role.id);
+      return interaction.editReply("✅ " + role.toString() + " এখন Pookie Play নিয়ন্ত্রণ করতে পারবে। Role না থাকা সদস্যরা কমান্ড ও Player Button ব্যবহার করতে পারবে না।");
+    }
+
+    if (!hasControlPermission(interaction)) {
+      return interaction.reply({ content: "⛔ Pookie Play নিয়ন্ত্রণ করার অনুমতি তোমার নেই। নির্ধারিত Role লাগবে।", ephemeral: true });
     }
 
     if (name === "play") {

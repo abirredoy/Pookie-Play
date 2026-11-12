@@ -8,14 +8,12 @@ lavalink:
   plugins:
     - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.2"
       snapshot: false
-    - dependency: "com.waris4ly.soundy:plugin:1.0.0"
-      repository: "https://maven.lavalink.dev/releases"
   server:
     password: "${LAVALINK_SERVER_PASSWORD}"
     sources:
       youtube: false
       bandcamp: true
-      soundcloud: false
+      soundcloud: true
       twitch: true
       vimeo: true
       nico: true
@@ -32,11 +30,9 @@ lavalink:
       rotation: true
       channelMix: true
       lowPass: true
-    # Larger audio buffers help absorb brief network/GC pauses.
     nonAllocatingFrameBuffer: false
     bufferDurationMs: 400
     frameBufferDurationMs: 5000
-    # Favor clear Opus output while keeping resampling load reasonable.
     opusEncodingQuality: 10
     resamplingQuality: HIGH
     trackStuckThresholdMs: 10000
@@ -47,8 +43,6 @@ lavalink:
     soundcloudSearchEnabled: true
 
 plugins:
-  soundy:
-    enabled: true
   youtube:
     enabled: true
     allowSearch: true

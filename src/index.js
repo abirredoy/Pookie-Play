@@ -19,6 +19,8 @@ const commands = [
   new SlashCommandBuilder().setName("leave").setDescription("Leave the voice channel"),
   new SlashCommandBuilder().setName("play").setDescription("Play a song using Spotify links or song names")
     .addStringOption(o => o.setName("query").setDescription("Song name or Spotify track link").setRequired(true)),
+  new SlashCommandBuilder().setName("add").setDescription("Add a song to Queue Mode without replacing the current track")
+    .addStringOption(o => o.setName("query").setDescription("Song name or song link").setRequired(true)),
   new SlashCommandBuilder().setName("player").setDescription("Show music player controls"),
   new SlashCommandBuilder().setName("queue").setDescription("Show the music queue"),
   new SlashCommandBuilder().setName("nowplaying").setDescription("Show the current track"),
@@ -338,7 +340,7 @@ client.on("interactionCreate", async interaction => {
         .addFields(
           { name: "Music", value: "/play query — গান চালাও\n/queue — Queue দেখো\n/join /leave — Voice control", inline: false },
           { name: "Playback modes", value: "/mode auto অথবা queue — Auto Mode ও Queue Mode একসঙ্গে চালু হবে না", inline: false },
-          { name: "Queue tools", value: "/shuffle /remove /move /clearqueue /repeat /seek /nowplaying", inline: false },
+          { name: "Queue tools", value: "/add query — Queue Mode-এ গান যোগ করো\n/queue /shuffle /remove /move /clearqueue /repeat /seek /nowplaying", inline: false },
           { name: "Controls", value: "/pause /resume /skip /stop /volume value এবং Player buttons", inline: false },
           { name: "Admin", value: "/controlrole role — কোন Role বট নিয়ন্ত্রণ করবে সেট করো (Administrator permission প্রয়োজন)", inline: false }
         ).setFooter({ text: "Sources: YouTube • YouTube Music • SoundCloud (যেটি পাওয়া যায়)।" });
@@ -367,6 +369,19 @@ client.on("interactionCreate", async interaction => {
       return interaction.editReply(result.queued
         ? "➕ **" + result.track.info.title + "** Queue-তে যোগ হয়েছে। গান শুরু হলে নতুন Player card আসবে।"
         : "🎶 **" + result.track.info.title + "** চালু হচ্ছে। নতুন Player card পাঠানো হচ্ছে।");
+    }
+
+    if (name === "add") {
+      if (music.getMode(interaction.guildId) !== "queue") {
+        return interaction.reply({ content: "📻 আগে Queue Mode চালু করো: `/mode type:Queue Mode`। Auto Mode আলাদা radio system।", ephemeral: true });
+      }
+      const query = interaction.options.getString("query", true);
+      const channel = await requireVoice(interaction);
+      await interaction.deferReply();
+      const result = await music.add(interaction.guildId, channel, query, interaction.channelId);
+      return interaction.editReply(result.queued
+        ? "➕ **" + result.track.info.title + "** Queue-তে যোগ হয়েছে। আগের গান শেষ হলে এটি বাজবে।"
+        : "🎶 **" + result.track.info.title + "** Queue-তে যোগ করে চালু করা হচ্ছে।");
     }
 
     if (name === "join") {

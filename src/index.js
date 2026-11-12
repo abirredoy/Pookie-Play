@@ -220,12 +220,12 @@ function playerStatusFooter(q, status = "Ready") {
   const auto = q.mode === "auto" ? "ON" : "OFF";
   const queue = q.mode === "queue" ? "ON" : "OFF";
   const repeat = q.repeat === "track" ? "Song" : q.repeat === "queue" ? "Queue" : "OFF";
-  return { text: "🤖 Auto Mode: " + auto + " • 📜 Queue Mode: " + queue + " • Repeat: " + repeat + "\n📍 Status: " + String(status).slice(0, 130) };
+  return { text: "🤖 Auto Mode: " + auto + " • 📜 Queue Mode: " + queue + " • 🔟 Quick Mode: " + (q.quickMode ? "ON" : "OFF") + " • Repeat: " + repeat + "\n📍 Status: " + String(status).slice(0, 130) };
 }
 
 function setPlayerStats(embed, q = {}) {
   const current = q.current || {};
-  const mode = q.mode === "auto" ? "Auto" : "Queue";
+  const mode = q.quickMode ? "Quick" : q.mode === "auto" ? "Auto" : "Queue";
   embed.setFields(
     { name: "🎧 Source", value: String(current.sourceName || "Unknown"), inline: true },
     { name: "🔊 Volume", value: String(Number.isFinite(q.volume) ? q.volume : 100) + "%", inline: true },

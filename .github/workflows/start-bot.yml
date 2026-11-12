@@ -47,7 +47,7 @@ jobs:
           echo $! > lavalink.pid
           echo "Waiting for private Lavalink to become ready..."
           for i in {1..90}; do
-            if curl -fsS -u "default:$PASSWORD" http://127.0.0.1:2333/version >/dev/null; then
+            if curl -fsS -H "Authorization: $PASSWORD" http://127.0.0.1:2333/version >/dev/null; then
               echo "Private Lavalink is ready."
               exit 0
             fi

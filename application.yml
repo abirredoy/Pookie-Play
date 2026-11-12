@@ -30,6 +30,19 @@ lavalink:
       rotation: true
       channelMix: true
       lowPass: true
+    # Larger audio buffers help absorb brief network/GC pauses.
+    nonAllocatingFrameBuffer: false
+    bufferDurationMs: 400
+    frameBufferDurationMs: 5000
+    # Favor clear Opus output while keeping resampling load reasonable.
+    opusEncodingQuality: 10
+    resamplingQuality: HIGH
+    trackStuckThresholdMs: 10000
+    useSeekGhosting: true
+    youtubePlaylistLoadLimit: 6
+    playerUpdateInterval: 5
+    youtubeSearchEnabled: true
+    soundcloudSearchEnabled: true
 
 plugins:
   youtube:

@@ -67,14 +67,13 @@ jobs:
               allowDirectVideoIds: true
               allowDirectPlaylistIds: true
               clients:
-                - MUSIC
                 - ANDROID_VR
-                - WEB
-                - MWEB
                 - ANDROID_MUSIC
+                - MWEB
+                - WEB
+                - WEBEMBEDDED
                 - IOS
                 - TVHTML5_SIMPLY
-                - WEBEMBEDDED
           EOF
 
           docker run -d --name pookie-lavalink -p 2333:2333 -v "$PWD/application.yml:/opt/Lavalink/application.yml:ro" -e JAVA_TOOL_OPTIONS="-Xmx1G" ghcr.io/lavalink-devs/lavalink:4

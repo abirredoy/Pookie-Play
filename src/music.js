@@ -98,7 +98,6 @@ function createMusic(shoukaku) {
       const track = s.queue.shift();
       if (!track) { s.current = null; return false; }
       s.current = track;
-      s.fallbackTried = false;
       console.log("[Music] Starting:", track.info?.title || "untitled", "| source:", track.info?.sourceName || "unknown");
       await s.player.playTrack({ track: { encoded: track.encoded } });
       await s.player.setGlobalVolume(s.volume);
@@ -136,19 +135,24 @@ function createMusic(shoukaku) {
         s.fallbackTried = true;
         const info = failedTrack.info;
         const rawTitle = String(info.title || "");
-        const fallbackQuery = rawTitle.split(/[|–—]/)[0].replace(/\s*\([^)]*\)\s*$/, "").trim();
+        const fallbackQuery = [rawTitle.split(/[|–—]/)[0], info.author || ""]
+          .join(" ").replace(/\s*\([^)]*\)\s*$/, "").trim();
         if (fallbackQuery) {
-          console.log("[Music] YouTube failed; trying clean SoundCloud title:", fallbackQuery);
-          let fallbackTracks = await tryResolve("scsearch:" + fallbackQuery, s.player?.node);
-          if (!fallbackTracks.length && info.author) {
-            fallbackTracks = await tryResolve("scsearch:" + fallbackQuery + " " + info.author, s.player?.node);
+          console.log("[Music] YouTube playback failed; trying YouTube Music search:", fallbackQuery);
+          let fallbackTracks = await tryResolve("ytmsearch:" + fallbackQuery, s.player?.node);
+          fallbackTracks = fallbackTracks.filter(track => track.encoded !== failedTrack.encoded);
+          let fallbackTrack = fallbackTracks.find(track => track.info?.sourceName === "youtube") || fallbackTracks[0];
+          if (!fallbackTrack) {
+            console.log("[Music] YouTube Music had no alternate result; trying SoundCloud.");
+            fallbackTracks = await tryResolve("scsearch:" + fallbackQuery, s.player?.node);
+            fallbackTrack = fallbackTracks.find(track => track.info?.sourceName === "soundcloud") || fallbackTracks[0];
           }
-          const soundcloudTrack = fallbackTracks.find(track => track.info?.sourceName === "soundcloud") || fallbackTracks[0];
-          if (soundcloudTrack) {
-            s.queue.unshift(soundcloudTrack);
-            console.log("[Music] SoundCloud fallback found:", soundcloudTrack.info?.title || "untitled");
+          if (fallbackTrack) {
+            s.queue.unshift(fallbackTrack);
+            console.log("[Music] Alternate source result found:", fallbackTrack.info?.title || "untitled",
+              "| source:", fallbackTrack.info?.sourceName || "unknown");
           } else {
-            console.warn("[Music] SoundCloud fallback found no track.");
+            console.warn("[Music] No alternate playback result found.");
           }
         }
       }
@@ -221,7 +225,7 @@ function createMusic(shoukaku) {
       await join(id, channel);
       const s = get(id);
       const tracks = await resolve(query, s.player.node);
-      if (!tracks.length) throw new Error("SoundCloud-এ এই গানটি পাওয়া যায়নি। অন্য নাম দিয়ে চেষ্টা করো।");
+      if (!tracks.length) throw new Error("YouTube ও SoundCloud—কোনো সোর্স থেকেই গানটি পাওয়া যায়নি। অন্য নাম বা সরাসরি audio link দিয়ে চেষ্টা করো।");
       const isDirectUrl = /^https?:\/\//i.test(query);
       const wasIdle = !s.current;
       s.currentQuery = query;

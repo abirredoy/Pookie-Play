@@ -22,81 +22,11 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Start Lavalink audio server
-        shell: bash
-        run: |
-          set -euo pipefail
-          LAVALINK_PASSWORD="$(openssl rand -hex 24)"
-          export LAVALINK_PASSWORD
-          echo "LAVALINK_PASSWORD=$LAVALINK_PASSWORD" >> "$GITHUB_ENV"
-
-          YOUTUBE_PLUGIN_VERSION="$(python3 - <<'PY'
-          import urllib.request, xml.etree.ElementTree as ET
-          url = "https://maven.lavalink.dev/releases/dev/lavalink/youtube/youtube-plugin/maven-metadata.xml"
-          with urllib.request.urlopen(url, timeout=30) as response:
-              root = ET.fromstring(response.read())
-          version = root.findtext("./versioning/release") or root.findtext("./versioning/latest")
-          if not version:
-              raise SystemExit("Could not find a stable YouTube plugin version")
-          print(version)
-          PY
-          )"
-
-          cat > application.yml <<EOF
-          server:
-            address: 0.0.0.0
-            port: 2333
-          lavalink:
-            server:
-              password: "${LAVALINK_PASSWORD}"
-              sources:
-                youtube: false
-                soundcloud: true
-                bandcamp: true
-                twitch: true
-                vimeo: true
-                http: true
-                local: false
-            plugins:
-              - dependency: "dev.lavalink.youtube:youtube-plugin:${YOUTUBE_PLUGIN_VERSION}"
-                snapshot: false
-          plugins:
-            youtube:
-              enabled: true
-              allowSearch: true
-              allowDirectVideoIds: true
-              allowDirectPlaylistIds: true
-              clients:
-                - ANDROID_VR
-                - ANDROID_MUSIC
-                - MWEB
-                - WEB
-                - WEBEMBEDDED
-                - IOS
-                - TVHTML5_SIMPLY
-          EOF
-
-          docker run -d --name pookie-lavalink -p 2333:2333 -v "$PWD/application.yml:/opt/Lavalink/application.yml:ro" -e JAVA_TOOL_OPTIONS="-Xmx1G" ghcr.io/lavalink-devs/lavalink:4
-
-          for attempt in $(seq 1 180); do
-            if curl -fsS -H "Authorization: $LAVALINK_PASSWORD" http://127.0.0.1:2333/version >/dev/null; then
-              echo "Lavalink is ready."
-              exit 0
-            fi
-            if [ "$attempt" -eq 180 ]; then
-              echo "Lavalink did not become ready. Container logs:"
-              docker logs pookie-lavalink
-              exit 1
-            fi
-            sleep 2
-          done
-
       - name: Start Pookie Play
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           GUILD_ID: ${{ secrets.GUILD_ID }}
-          LAVALINK_HOST: 127.0.0.1:2333
         run: |
           if [ -z "$DISCORD_TOKEN" ] || [ -z "$CLIENT_ID" ]; then
             echo "Missing repository secrets: DISCORD_TOKEN and/or CLIENT_ID"

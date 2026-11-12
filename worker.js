@@ -24,16 +24,27 @@ function githubHeaders(token) {
 }
 
 async function getRuns(token) {
-  const response = await fetch(API_BASE + "/actions/workflows/" + WORKFLOW + "/runs?per_page=10", {
-    headers: githubHeaders(token),
-    cf: { cacheTtl: 0, cacheEverything: false }
-  });
-  const data = await response.json().catch(() => ({}));
+  let response;
+  try {
+    response = await fetch(API_BASE + "/actions/workflows/" + WORKFLOW + "/runs?per_page=20", {
+      headers: githubHeaders(token),
+      cf: { cacheTtl: 0, cacheEverything: false }
+    });
+  } catch (cause) {
+    const error = new Error("Could not connect to GitHub API: " + (cause?.message || "fetch failed"));
+    error.githubDetail = error.message;
+    throw error;
+  }
+
+  const raw = await response.text();
+  let data = {};
+  try { data = raw ? JSON.parse(raw) : {}; } catch {}
   if (!response.ok) {
-    console.error("[Pookie API] GitHub runs request failed:", response.status, data.message || "");
     const error = new Error("GitHub API returned HTTP " + response.status);
     error.githubStatus = response.status;
-    error.githubMessage = typeof data.message === "string" ? data.message : "";
+    error.githubMessage = (typeof data.message === "string" && data.message) ||
+      raw.slice(0, 500) || response.statusText || "GitHub returned an empty response body";
+    error.githubRequestId = response.headers.get("x-github-request-id");
     throw error;
   }
   return Array.isArray(data.workflow_runs) ? data.workflow_runs : [];
@@ -59,23 +70,27 @@ async function status(request, env) {
       lastRunCompletedAt: latest?.completed_at || null
     });
   } catch (error) {
-    console.error("[Pookie API] Status error:", error.message);
-    return json({ state: "unknown", active: false, message: "GitHub API error", githubStatus: error.githubStatus || null, detail: error.githubMessage || "Network/request failed" }, 502);
+    console.error("[Pookie API] Status error:", error.message, error.githubMessage || error.githubDetail || "");
+    return json({
+      state: "unknown",
+      active: false,
+      message: "GitHub API error",
+      githubStatus: error.githubStatus || null,
+      detail: error.githubMessage || error.githubDetail || error.message || "Unknown error",
+      requestId: error.githubRequestId || null
+    }, 502);
   }
 }
 
 async function start(request, env) {
-  if (request.method !== "POST") {
-    return json({ error: "Method not allowed." }, 405);
-  }
+  if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
   const origin = request.headers.get("Origin");
   const requestUrl = new URL(request.url);
   if (!origin || origin !== requestUrl.origin) {
     return json({ error: "এই ওয়েবসাইট থেকেই Start request পাঠাতে হবে।" }, 403);
   }
-  if (!env.GITHUB_TOKEN) {
-    return json({ error: "Cloudflare Worker Secret GITHUB_TOKEN সেট করা নেই।" }, 503);
-  }
+  if (!env.GITHUB_TOKEN) return json({ error: "Cloudflare Worker Secret GITHUB_TOKEN সেট করা নেই।" }, 503);
+
   try {
     const runs = await getRuns(env.GITHUB_TOKEN);
     const active = runs.find(run => ACTIVE.has(run.status));
@@ -89,18 +104,25 @@ async function start(request, env) {
       body: JSON.stringify({ ref: "main" })
     });
     if (!response.ok) {
-      const details = await response.json().catch(() => ({}));
-      console.error("[Pookie API] Workflow dispatch failed:", response.status, details.message || "");
+      const raw = await response.text();
+      let details = {};
+      try { details = raw ? JSON.parse(raw) : {}; } catch {}
+      const detail = details.message || raw.slice(0, 400) || response.statusText || "Empty response";
+      console.error("[Pookie API] Workflow dispatch failed:", response.status, detail);
       return json({
-        error: response.status === 401 || response.status === 403
-          ? "GitHub Token-এর Actions: Read and write permission প্রয়োজন।"
-          : "GitHub Actions-এ Start request পাঠানো যায়নি (HTTP " + response.status + ")।"
+        error: "GitHub Actions Start request ব্যর্থ হয়েছে।",
+        githubStatus: response.status,
+        detail
       }, 502);
     }
     return json({ ok: true, message: "Start request GitHub Actions-এ পাঠানো হয়েছে।" }, 202);
   } catch (error) {
-    console.error("[Pookie API] Start error:", error.message);
-    return json({ error: "GitHub-এর সঙ্গে সংযোগ করা যায়নি। Worker Logs পরীক্ষা করো।" }, 502);
+    console.error("[Pookie API] Start error:", error.message, error.githubMessage || error.githubDetail || "");
+    return json({
+      error: "GitHub-এর সঙ্গে সংযোগ করা যায়নি।",
+      githubStatus: error.githubStatus || null,
+      detail: error.githubMessage || error.githubDetail || error.message || "Unknown error"
+    }, 502);
   }
 }
 

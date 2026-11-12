@@ -17,8 +17,8 @@ if (!token || !clientId) {
 const commands = [
   new SlashCommandBuilder().setName("join").setDescription("Join your voice channel"),
   new SlashCommandBuilder().setName("leave").setDescription("Leave the voice channel"),
-  new SlashCommandBuilder().setName("play").setDescription("Play a song from YouTube or SoundCloud")
-    .addStringOption(o => o.setName("query").setDescription("Song name or YouTube/SoundCloud link").setRequired(true)),
+  new SlashCommandBuilder().setName("play").setDescription("Play a song using Spotify links or song names")
+    .addStringOption(o => o.setName("query").setDescription("Song name or Spotify track link").setRequired(true)),
   new SlashCommandBuilder().setName("player").setDescription("Show music player controls"),
   new SlashCommandBuilder().setName("queue").setDescription("Show the music queue"),
   new SlashCommandBuilder().setName("mode").setDescription("Set automatic music discovery mode")
@@ -132,12 +132,12 @@ client.on("interactionCreate", async interaction => {
 
     if (name === "help") {
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play — Help")
-        .setDescription("YouTube প্রথমে চেষ্টা করবে; না পেলে SoundCloud-এ খুঁজবে।")
+        .setDescription("Spotify track link থেকে গানের তথ্য নিয়ে SoundCloud-এ অডিও খুঁজবে।")
         .addFields(
           { name: "Music", value: "/play query — গান চালাও\n/queue — Queue দেখো\n/join /leave — Voice control", inline: false },
           { name: "Autoplay", value: "/mode viral | bangla | global | mixed | off\n/autoplay enabled:true|false", inline: false },
           { name: "Controls", value: "/pause /resume /skip /stop /volume value এবং Player buttons", inline: false }
-        ).setFooter({ text: "YouTube playback may still be limited by YouTube availability or regional restrictions." });
+        ).setFooter({ text: "Spotify links identify songs; audio playback is provided by SoundCloud when available." });
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
@@ -232,7 +232,7 @@ app.get("/api/status", (_req, res) => res.json({
   bot: client.isReady() ? client.user.tag : "Offline",
   connectedGuilds: client.guilds.cache.size,
   lavalinkNodes: [...shoukaku.nodes.values()].map(n => ({ name: n.name, state: n.state })),
-  playback: "YouTube search/playback with SoundCloud fallback"
+  playback: "Spotify track metadata + SoundCloud audio search"
 }));
 app.listen(Number(process.env.PORT || 3000), () => console.log("Dashboard listening."));
 client.login(token).catch(error => { console.error("Discord login failed:", error); process.exit(1); });

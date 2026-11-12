@@ -1,4 +1,4 @@
-const { readSession, isAllowed } = require("./_lib/auth");
+const { readSession, isAllowed } = require("../lib/control-auth");
 module.exports = (req, res) => {
   if (req.method !== "GET") return res.status(405).end();
   const session = readSession(req);

@@ -1,4 +1,4 @@
-const { cookieMap, clearCookie, setCookie, issueSession, isAllowed } = require("../_lib/auth");
+const { cookieMap, clearCookie, setCookie, issueSession, isAllowed } = require("../../lib/control-auth");
 
 module.exports = async (req, res) => {
   if (req.method !== "GET") return res.status(405).end();

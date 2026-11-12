@@ -58,7 +58,7 @@ jobs:
           echo "Waiting for private Lavalink to become ready..."
           READY=0
           for attempt in $(seq 1 90); do
-            if curl -fsS http://127.0.0.1:2333/version >/dev/null 2>&1; then
+            if curl -fsS -H "Authorization: ${LAVALINK_SERVER_PASSWORD}" http://127.0.0.1:2333/version >/dev/null 2>&1; then
               READY=1
               break
             fi

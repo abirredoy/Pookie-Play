@@ -333,20 +333,8 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
           s.history.unshift(finished);
           s.history = s.history.slice(0, 25);
           if (!s.listMode) {
-            if (!s.listMode) {
-              if (s.repeat === "track") s.queue.unshift(finished);
-              else s.autoSimilarTo = finished;
-            } else if (s.repeat === "track") {
-              s.queue.unshift(finished);
-            } else if (s.repeat === "queue") {
-              s.queue.push(finished);
-            } else if (s.repeat === "shuffle") {
-              s.queue.push(finished);
-              for (let i = s.queue.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [s.queue[i], s.queue[j]] = [s.queue[j], s.queue[i]];
-              }
-            }
+            if (s.repeat === "track") s.queue.unshift(finished);
+            else s.autoSimilarTo = finished;
           }
         }
         s.current = null;
@@ -379,11 +367,10 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
             s.queue = [s.listSlots[nextSlot]];
             playNext(guildId).catch(console.error);
           } else {
-            s.listMode = false;
             s.listCurrentSlot = null;
             s.listOrder = [];
             s.queue = [];
-            console.log("[List Mode] Playlist finished.");
+            console.log("[List Mode] Saved List finished; List remains ON and playback is idle.");
           }
         } else if (!s.listMode || s.queue.length > 0 || s.repeat === "track" || s.repeat === "queue" || s.repeat === "shuffle") {
           playNext(guildId).catch(console.error);
@@ -446,7 +433,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     async play(id, channel, query, textChannelId) {
       await join(id, channel);
       const s = get(id);
-      if (s.listMode) { s.listMode = false; s.listCurrentSlot = null; s.listOrder = []; }
+      if (s.listMode) throw new Error("List ON আছে। বাইরের গান চালাতে আগে Player-এর List বাটন OFF করো।");
       if (textChannelId) s.textChannelId = textChannelId;
       const tracks = await resolve(query, s.player.node);
       if (!tracks.length) throw new Error("YouTube ও SoundCloud—কোনো সোর্স থেকেই গানটি পাওয়া যায়নি। অন্য নাম বা সরাসরি audio link দিয়ে চেষ্টা করো।");
@@ -457,7 +444,8 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
 
       // A supplied URL is an explicit version choice: put it first and start it now.
       if (isDirectUrl && s.current && s.player) {
-        s.queue.unshift(...tracks.slice(0, 1));
+        s.queue = [tracks[0]];
+        s.autoSimilarTo = null;
         await s.player.stopTrack();
         s.current = null;
         await playNext(id);
@@ -489,7 +477,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     async playResolved(id, channel, track, textChannelId) {
       await join(id, channel);
       const s = get(id);
-      if (s.listMode) { s.listMode = false; s.listCurrentSlot = null; s.listOrder = []; }
+      if (s.listMode) throw new Error("List ON আছে। বাইরের গান চালাতে আগে Player-এর List বাটন OFF করো।");
       s.mode = "auto";
       s.autoSimilarTo = null;
       if (textChannelId) s.textChannelId = textChannelId;
@@ -547,7 +535,6 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
         await s.player.stopTrack();
         s.current = null;
         if (!next || !s.listSlots[next]) {
-          s.listMode = false;
           s.listCurrentSlot = null;
           s.listOrder = [];
           s.queue = [];
@@ -750,7 +737,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     async randomNext(id) {
       const s = get(id);
       if (!s.player) return false;
-      s.listMode = false;
+      if (s.listMode) throw new Error("List ON আছে। Random Play-এর জন্য আগে List বাটন OFF করো।");
       s.listCurrentSlot = null;
       s.listOrder = [];
       s.mode = "auto";

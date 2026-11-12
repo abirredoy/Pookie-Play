@@ -9,9 +9,8 @@ const { createMusic } = require("./music");
 
 const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.CLIENT_ID;
-const lavalinkPassword = process.env.LAVALINK_PASSWORD;
-if (!token || !clientId || !lavalinkPassword) {
-  console.error("Missing DISCORD_TOKEN, CLIENT_ID, or LAVALINK_PASSWORD.");
+if (!token || !clientId) {
+  console.error("Missing DISCORD_TOKEN or CLIENT_ID.");
   process.exit(1);
 }
 
@@ -43,12 +42,26 @@ const commands = [
 ].map(command => command.toJSON());
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
-const shoukaku = new Shoukaku(new Connectors.DiscordJS(client), [{
-  name: "Pookie-Lavalink",
-  url: process.env.LAVALINK_HOST || "127.0.0.1:2333",
-  auth: lavalinkPassword,
-  secure: false
-}]);
+// Community-hosted Lavalink v4 nodes (free, best-effort; availability can change).
+// A private/local node can still be supplied through LAVALINK_HOST + LAVALINK_PASSWORD.
+const nodes = process.env.LAVALINK_HOST && process.env.LAVALINK_PASSWORD
+  ? [{
+      name: "Custom-Lavalink",
+      url: process.env.LAVALINK_HOST,
+      auth: process.env.LAVALINK_PASSWORD,
+      secure: process.env.LAVALINK_SECURE === "true"
+    }]
+  : [
+      { name: "Nazha-SG1", url: "sg-1.nazha.online:443", auth: "https://discord.gg/XeSCnk57ZF", secure: true },
+      { name: "Nazha-Global", url: "lavalink.nazha.online:443", auth: "nazhafreelava", secure: true },
+      { name: "Vinster", url: "freelavalinkvinster.in:443", auth: "youshallnotpass", secure: true },
+      { name: "G3V", url: "lava.g3v.co.uk:9008", auth: "lavalinklol", secure: false }
+    ];
+const shoukaku = new Shoukaku(new Connectors.DiscordJS(client), nodes, {
+  moveOnDisconnect: true,
+  reconnectTries: 5,
+  reconnectInterval: 5
+});
 shoukaku.on("ready", name => console.log("[Lavalink] Connected:", name));
 shoukaku.on("error", (name, error) => console.error("[Lavalink] Error:", name, error));
 shoukaku.on("close", (name, code, reason) => console.warn("[Lavalink] Closed:", name, code, reason));

@@ -117,27 +117,30 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       ? [
           artist ? artist + " songs" : "",
           "songs similar to " + title + (artist ? " " + artist : ""),
-          artist ? "artists similar to " + artist + " popular songs" : ""
+          artist ? "artists similar to " + artist + " popular songs" : "",
+          language ? "popular " + language + " songs" : "",
+          "popular songs similar genre to " + title
         ].filter(Boolean)
       : [
-          "popular hit songs",
-          "trending pop music hits",
-          "popular Hindi songs",
-          "popular Bangla songs",
-          "popular English songs",
-          "popular K-pop songs"
+          "popular hit songs", "trending pop music hits", "popular Hindi songs",
+          "popular Bangla songs", "popular English songs", "popular K-pop songs"
         ];
-    if (language && info) queries.unshift(language + " songs similar to " + title + " " + artist);
+    const seenQueries = new Set();
     for (const query of queries) {
-      console.log("[AutoPlay] Searching:", query);
+      if (seenQueries.has(query.toLowerCase())) continue;
+      seenQueries.add(query.toLowerCase());
+      console.log("[AutoPlay] Searching related track:", query);
       const tracks = await resolve(query, s.player.node);
       const fresh = tracks.filter(t => {
-        const name = String(t.info?.title || "").toLowerCase();
+        const name = String(t.info?.title || "").trim().toLowerCase();
         return name && !recent.has(name);
       });
       if (fresh.length) return fresh[Math.floor(Math.random() * Math.min(fresh.length, 5))];
     }
-    return null;
+    // Similarity search can fail on some Lavalink sources. Fall back to a broad
+    // random music search rather than letting Auto Mode go silent.
+    console.warn("[AutoPlay] Related searches returned no fresh tracks; trying random music fallback.");
+    return findRandomTrack(s);
   }
 
   async function fillAutoQueue(guildId, targetSize = 5) {
@@ -196,7 +199,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       const j = Math.floor(Math.random() * (i + 1));
       [queries[i], queries[j]] = [queries[j], queries[i]];
     }
-    for (const query of queries.slice(0, 6)) {
+    for (const query of queries) {
       console.log("[Random Next] Searching:", query);
       const tracks = await resolve(query, s.player.node);
       const fresh = tracks.filter(t => {
@@ -463,12 +466,19 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       }
 
       if (s.mode === "auto") {
-        // Radio mode plays the requested track first, then discovers related tracks itself.
+        // In Auto Mode, a manual search/link becomes the new radio seed immediately.
         s.queue = [tracks[0]];
-      } else {
-        // One /play request adds one selected track; users control the rest of the queue.
-        s.queue.push(tracks[0]);
+        s.autoSimilarTo = null;
+        if (s.current && s.player) {
+          await s.player.stopTrack();
+          s.current = null;
+        }
+        const started = await playNext(id);
+        if (!started) throw new Error("নির্বাচিত গানটি Lavalink চালু করতে পারেনি। Actions log পরীক্ষা করো।");
+        return { track: tracks[0], queued: false, queueLength: s.queue.length };
       }
+      // Queue Mode adds the selected track without interrupting the current song.
+      s.queue.push(tracks[0]);
       if (wasIdle) await playNext(id);
       return { track: tracks[0], queued: !wasIdle, queueLength: s.queue.length };
     },
@@ -482,6 +492,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       const s = get(id);
       if (s.listMode) { s.listMode = false; s.listCurrentSlot = null; s.listOrder = []; }
       s.mode = "auto";
+      s.autoSimilarTo = null;
       if (textChannelId) s.textChannelId = textChannelId;
       s.queue = [track];
       s.currentQuery = String(track.info?.title || "");
@@ -490,7 +501,8 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
         await s.player.stopTrack();
         s.current = null;
       }
-      await playNext(id);
+      const started = await playNext(id);
+      if (!started) throw new Error("নির্বাচিত গানটি Lavalink চালু করতে পারেনি। Actions log পরীক্ষা করো।");
       return { track, queued: false, queueLength: s.queue.length };
     },
     async pause(id) {
@@ -743,7 +755,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       s.listOrder = [];
       s.mode = "auto";
       const candidate = await findRandomTrack(s);
-      if (!candidate) return false;
+      if (!candidate) throw new Error("Lavalink connected, কিন্তু কোনো search source গান ফেরত দিচ্ছে না। Lavalink node-এর YouTube/SoundCloud search source পরীক্ষা করো।");
       if (s.current) {
         s.history.unshift(s.current);
         s.history = s.history.slice(0, 25);
@@ -752,7 +764,9 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       s.queue.unshift(candidate);
       if (s.current) await s.player.stopTrack();
       s.current = null;
-      return playNext(id);
+      const started = await playNext(id);
+      if (!started) throw new Error("গান পাওয়া গেছে, কিন্তু Lavalink সেটি চালু করতে পারেনি। Actions log-এ [Music] Could not start track দেখো।");
+      return true;
     },
     async seek(id, position) {
       const s = get(id);

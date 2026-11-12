@@ -289,6 +289,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
 
   return {
     join,
+    setTextChannel(id, channelId) { get(id).textChannelId = channelId; },
     async leave(id) {
       const s = get(id);
       s.queue = [];

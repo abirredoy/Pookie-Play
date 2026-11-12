@@ -10,7 +10,7 @@ function createMusic(shoukaku) {
   const get = (id) => {
     if (!states.has(id)) states.set(id, {
       player: null, queue: [], current: null, currentQuery: "", fallbackTried: false, volume: 70,
-      mode: "off", repeat: "off", history: [], seedIndex: 0, busy: false, recovering: false
+      muted: false, previousVolume: 70, mode: "off", repeat: "off", history: [], seedIndex: 0, busy: false, recovering: false
     });
     return states.get(id);
   };
@@ -293,6 +293,32 @@ function createMusic(shoukaku) {
     async adjustVolume(id, delta) {
       const s = get(id);
       return this.volume(id, s.volume + delta);
+    },
+    async toggleMute(id) {
+      const s = get(id);
+      if (!s.muted) {
+        s.previousVolume = s.volume || 70;
+        s.muted = true;
+        await this.volume(id, 0);
+      } else {
+        s.muted = false;
+        await this.volume(id, s.previousVolume || 70);
+      }
+      return { muted: s.muted, volume: s.volume };
+    },
+    cycleMode(id) {
+      const s = get(id);
+      const modes = ["mixed", "bangla", "global", "viral", "off"];
+      const next = (modes.indexOf(s.mode) + 1) % modes.length;
+      s.mode = modes[next];
+      s.seedIndex = 0;
+      return s.mode;
+    },
+    async seekRelative(id, delta) {
+      const s = get(id);
+      if (!s.player || !s.current) return false;
+      const position = Number(s.player.position || 0);
+      return this.seek(id, position + delta);
     },
     setMode(id, mode) {
       const s = get(id);

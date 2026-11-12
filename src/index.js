@@ -182,7 +182,7 @@ client.on("interactionCreate", async interaction => {
       const upcoming = data.tracks.slice(0, 10).map((t, i) => (i + 1) + ". " + t.title).join("\n");
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎵 Pookie Play Queue")
         .setDescription(current + (upcoming ? "\n\n**পরের গানগুলো:**\n" + upcoming : "\n\nQueue খালি।"))
-        .setFooter({ text: "Link-only playback });
+        .setFooter({ text: "Link-only playback" });
       return interaction.reply({ embeds: [embed] });
     }
 

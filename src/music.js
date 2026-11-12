@@ -231,7 +231,7 @@ function createMusic(shoukaku) {
         return { track: tracks[0], queued: false, queueLength: s.queue.length };
       }
 
-      s.queue.push(tracks[0], ...tracks.slice(1, 4));
+      s.queue.push(...tracks);
       if (wasIdle) await playNext(id);
       return { track: tracks[0], queued: !wasIdle, queueLength: s.queue.length };
     },

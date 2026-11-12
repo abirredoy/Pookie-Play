@@ -72,11 +72,7 @@ jobs:
                 - WEBEMBEDDED
           EOF
 
-          docker run -d --name pookie-lavalink \
-            -p 2333:2333 \
-            -v "$PWD/application.yml:/opt/Lavalink/application.yml:ro" \
-            -e JAVA_TOOL_OPTIONS="-Xmx1G" \\
-            ghcr.io/lavalink-devs/lavalink:4
+          docker run -d --name pookie-lavalink -p 2333:2333 -v "$PWD/application.yml:/opt/Lavalink/application.yml:ro" -e JAVA_TOOL_OPTIONS="-Xmx1G" ghcr.io/lavalink-devs/lavalink:4
 
           for attempt in $(seq 1 90); do
             if curl -fsS -H "Authorization: $LAVALINK_PASSWORD" http://127.0.0.1:2333/version >/dev/null; then

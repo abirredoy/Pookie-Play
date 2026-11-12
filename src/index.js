@@ -52,14 +52,14 @@ const commands = [
 ].map(command => command.toJSON());
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
-// Pookie Play uses its own private Lavalink instance started by the GitHub Actions workflow.
-// No public/community nodes are used as a fallback.
+// Pookie Play connects to CloudeWave's shared public Lavalink v4 node.
+// This node is community-shared and is intended for testing; availability is not guaranteed.
 if (!process.env.LAVALINK_HOST || !process.env.LAVALINK_PASSWORD) {
   console.error("Missing private Lavalink configuration (LAVALINK_HOST / LAVALINK_PASSWORD).");
   process.exit(1);
 }
 const nodes = [{
-  name: "Pookie-Private",
+  name: "CloudeWave-Public",
   url: process.env.LAVALINK_HOST,
   auth: process.env.LAVALINK_PASSWORD,
   secure: process.env.LAVALINK_SECURE === "true"

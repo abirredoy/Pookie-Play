@@ -17,10 +17,21 @@ if (!token || !clientId) {
 const commands = [
   new SlashCommandBuilder().setName("join").setDescription("Join your voice channel"),
   new SlashCommandBuilder().setName("leave").setDescription("Leave the voice channel"),
-  new SlashCommandBuilder().setName("play").setDescription("Play a song using Spotify links or song names")
-    .addStringOption(o => o.setName("query").setDescription("Song name or Spotify track link").setRequired(true)),
+  new SlashCommandBuilder().setName("play").setDescription("Play a song or a saved Quick Slot")
+    .addStringOption(o => o.setName("query").setDescription("Song name or song link").setRequired(false))
+    .addIntegerOption(o => o.setName("quick").setDescription("Play saved Quick Slot 1-10").setMinValue(1).setMaxValue(10).setRequired(false)),
   new SlashCommandBuilder().setName("add").setDescription("Add a song to Queue Mode without replacing the current track")
     .addStringOption(o => o.setName("query").setDescription("Song name or song link").setRequired(true)),
+  new SlashCommandBuilder().setName("quick").setDescription("Manage your 10 saved Quick Queue slots")
+    .addSubcommand(s => s.setName("add").setDescription("Save a song in a numbered slot")
+      .addIntegerOption(o => o.setName("slot").setDescription("Slot number 1-10").setMinValue(1).setMaxValue(10).setRequired(true))
+      .addStringOption(o => o.setName("query").setDescription("Song name or song link").setRequired(true)))
+    .addSubcommand(s => s.setName("remove").setDescription("Remove a saved slot")
+      .addIntegerOption(o => o.setName("slot").setDescription("Slot number 1-10").setMinValue(1).setMaxValue(10).setRequired(true)))
+    .addSubcommand(s => s.setName("list").setDescription("Show saved Quick Queue slots"))
+    .addSubcommand(s => s.setName("clear").setDescription("Clear all 10 Quick Queue slots"))
+    .addSubcommand(s => s.setName("mode").setDescription("Turn serial Quick Mode on or off")
+      .addBooleanOption(o => o.setName("enabled").setDescription("Enable serial Quick Mode").setRequired(true))),
   new SlashCommandBuilder().setName("player").setDescription("Show music player controls"),
   new SlashCommandBuilder().setName("queue").setDescription("Show the music queue"),
   new SlashCommandBuilder().setName("nowplaying").setDescription("Show the current track"),
@@ -93,6 +104,49 @@ const music = createMusic(shoukaku, async (guildId, track, state) => {
     console.error("[Player message] Could not post track card:", error?.message || error);
   }
 });
+const quickStoragePath = "data/quick-queues.json";
+let quickSaveChain = Promise.resolve();
+
+async function loadQuickStorage() {
+  const repo = process.env.GITHUB_REPOSITORY;
+  const ghToken = process.env.GITHUB_TOKEN;
+  if (!repo || !ghToken) {
+    console.warn("[Quick Queue] GitHub storage unavailable; saved slots will be session-only.");
+    return;
+  }
+  const url = "https://api.github.com/repos/" + repo + "/contents/" + quickStoragePath;
+  const response = await fetch(url, { headers: { Authorization: "Bearer " + ghToken, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" } });
+  if (response.status === 404) return;
+  if (!response.ok) throw new Error("Could not load Quick Queue storage: HTTP " + response.status);
+  const file = await response.json();
+  const saved = JSON.parse(Buffer.from(file.content, "base64").toString("utf8"));
+  music.loadQuickSlots(saved);
+  console.log("[Quick Queue] Loaded saved slots for", Object.keys(saved).length, "server(s).");
+}
+
+function persistQuickStorage() {
+  quickSaveChain = quickSaveChain.then(async () => {
+    const repo = process.env.GITHUB_REPOSITORY;
+    const ghToken = process.env.GITHUB_TOKEN;
+    if (!repo || !ghToken) throw new Error("GitHub storage unavailable; cannot persist Quick Queue.");
+    const url = "https://api.github.com/repos/" + repo + "/contents/" + quickStoragePath;
+    const headers = { Authorization: "Bearer " + ghToken, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
+    const current = await fetch(url, { headers });
+    let sha;
+    if (current.ok) sha = (await current.json()).sha;
+    else if (current.status !== 404) throw new Error("Could not read Quick Queue storage: HTTP " + current.status);
+    const body = {
+      message: "Save Pookie Play Quick Queue slots",
+      content: Buffer.from(JSON.stringify(music.exportQuickSlots(), null, 2) + "\n").toString("base64"),
+      branch: process.env.GITHUB_REF_NAME || "main"
+    };
+    if (sha) body.sha = sha;
+    const response = await fetch(url, { method: "PUT", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!response.ok) throw new Error("Could not save Quick Queue: HTTP " + response.status + " " + (await response.text()).slice(0, 250));
+  });
+  return quickSaveChain;
+}
+
 const controlRoles = new Map();
 
 async function loadControlRoles() {
@@ -226,6 +280,8 @@ client.once("ready", async () => {
   console.log("Logged in as " + client.user.tag);
   try { await loadControlRoles(); }
   catch (error) { console.error("[Permissions] Failed to load role settings:", error); }
+  try { await loadQuickStorage(); }
+  catch (error) { console.error("[Quick Queue] Failed to load saved slots:", error); }
   const rest = new REST({ version: "10" }).setToken(token);
   try {
     const route = process.env.GUILD_ID
@@ -340,7 +396,7 @@ client.on("interactionCreate", async interaction => {
         .addFields(
           { name: "Music", value: "/play query — গান চালাও\n/queue — Queue দেখো\n/join /leave — Voice control", inline: false },
           { name: "Playback modes", value: "/mode auto অথবা queue — Auto Mode ও Queue Mode একসঙ্গে চালু হবে না", inline: false },
-          { name: "Queue tools", value: "/add query — Queue Mode-এ গান যোগ করো\n/queue /shuffle /remove /move /clearqueue /repeat /seek /nowplaying", inline: false },
+          { name: "Queue tools", value: "/add query — Queue Mode-এ গান যোগ করো\n/quick add slot query — ১০টি Quick Slot-এ গান রাখো\n/quick list /quick remove /quick clear /quick mode\n/play quick — Quick Slot নম্বর দিয়ে চালাও\n/queue /shuffle /remove /move /clearqueue /repeat /seek /nowplaying", inline: false },
           { name: "Controls", value: "/pause /resume /skip /stop /volume value এবং Player buttons", inline: false },
           { name: "Admin", value: "/controlrole role — কোন Role বট নিয়ন্ত্রণ করবে সেট করো (Administrator permission প্রয়োজন)", inline: false }
         ).setFooter({ text: "Sources: YouTube • YouTube Music • SoundCloud (যেটি পাওয়া যায়)।" });
@@ -362,13 +418,69 @@ client.on("interactionCreate", async interaction => {
     }
 
     if (name === "play") {
-      const query = interaction.options.getString("query", true);
+      const quickSlot = interaction.options.getInteger("quick");
+      const query = interaction.options.getString("query");
+      if ((quickSlot === null) === (!query)) {
+        return interaction.reply({ content: "একটি বেছে নাও: গান চালাতে query দাও অথবা Quick Slot চালাতে quick: 1-10 দাও।", ephemeral: true });
+      }
       const channel = await requireVoice(interaction);
       await interaction.deferReply();
+      if (quickSlot !== null) {
+        const result = await music.playQuick(interaction.guildId, channel, quickSlot, interaction.channelId);
+        return interaction.editReply("🎶 Quick Slot " + result.slot + " থেকে **" + result.track.info.title + "** চালু হচ্ছে। Quick Mode-এ পরের Slot-গুলোও সিরিয়াল অনুযায়ী বাজবে।");
+      }
       const result = await music.play(interaction.guildId, channel, query, interaction.channelId);
       return interaction.editReply(result.queued
         ? "➕ **" + result.track.info.title + "** Queue-তে যোগ হয়েছে। গান শুরু হলে নতুন Player card আসবে।"
         : "🎶 **" + result.track.info.title + "** চালু হচ্ছে। নতুন Player card পাঠানো হচ্ছে।");
+    }
+
+    if (name === "quick") {
+      const sub = interaction.options.getSubcommand();
+      if (sub === "add") {
+        const slot = interaction.options.getInteger("slot", true);
+        const query = interaction.options.getString("query", true);
+        const channel = await requireVoice(interaction);
+        await interaction.deferReply();
+        const result = await music.addQuick(interaction.guildId, channel, slot, query, interaction.channelId);
+        await persistQuickStorage();
+        return interaction.editReply("💾 **" + result.track.info.title + "** Quick Slot " + result.slot + "-এ সংরক্ষিত হয়েছে। (" + result.count + "/10)");
+      }
+      if (sub === "remove") {
+        const slot = interaction.options.getInteger("slot", true);
+        const result = await music.removeQuick(interaction.guildId, slot);
+        if (!result) return interaction.reply({ content: "এই Slot খালি।", ephemeral: true });
+        await persistQuickStorage();
+        return interaction.reply("🗑️ Quick Slot " + slot + " থেকে **" + result.info.title + "** সরানো হয়েছে।");
+      }
+      if (sub === "list") {
+        const slots = music.getQuickSlots(interaction.guildId);
+        const lines = Array.from({length:10}, (_,i) => {
+          const found = slots.find(item => item.slot === i+1);
+          return (i+1) + ". " + (found ? found.info.title : "— খালি —");
+        });
+        const q = music.getQueue(interaction.guildId);
+        return interaction.reply("**🎵 Quick Queue (" + slots.length + "/10)**\n" + lines.join("\n") + "\nQuick Mode: " + (q.quickMode ? "ON" : "OFF"));
+      }
+      if (sub === "clear") {
+        const count = music.clearQuick(interaction.guildId);
+        await persistQuickStorage();
+        return interaction.reply("🧹 Quick Queue-এর " + count + "টি Slot খালি করা হয়েছে।");
+      }
+      if (sub === "mode") {
+        const enabled = interaction.options.getBoolean("enabled", true);
+        if (enabled) await requireVoice(interaction);
+        const channel = interaction.member?.voice?.channel;
+        if (enabled && !channel) throw new Error("Quick Mode চালাতে আগে voice channel-এ যোগ দাও।");
+        if (enabled) {
+          await music.join(interaction.guildId, channel);
+          music.setTextChannel(interaction.guildId, interaction.channelId);
+        }
+        const active = await music.setQuickMode(interaction.guildId, enabled);
+        return interaction.reply(active
+          ? "🔟 Quick Mode ON। Slot অনুযায়ী গান সিরিয়ালভাবে বাজবে। AutoPlay OFF।"
+          : "Quick Mode OFF। বর্তমান গান শেষ হলে আর Quick Slot নিজে থেকে চলবে না।");
+      }
     }
 
     if (name === "add") {

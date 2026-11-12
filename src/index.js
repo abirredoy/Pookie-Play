@@ -398,7 +398,7 @@ client.on("interactionCreate", async interaction => {
         : new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play");
       setPlayerStats(embed, q);
       embed.setFooter(playerStatusFooter(q, status));
-      const updated = await interaction.message.edit({ embeds: [embed], components: id === "leave" ? [] : controlRows(q) });
+      const updated = await interaction.message.edit({ embeds: [embed], components: controlRows(q) });
       if (id === "leave") playerMessages.delete(interaction.guildId);
       else playerMessages.set(interaction.guildId, interaction.message);
       return updated;

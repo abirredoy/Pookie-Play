@@ -29,8 +29,8 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
   const states = new Map();
   const get = (id) => {
     if (!states.has(id)) states.set(id, {
-      player: null, queue: [], current: null, lastPlayed: null, currentQuery: "", fallbackTried: false, volume: 70,
-      muted: false, paused: false, previousVolume: 70, textChannelId: null, mode: "queue", repeat: "off", history: [], seedIndex: 0, busy: false, recovering: false
+      player: null, queue: [], current: null, lastPlayed: null, currentQuery: "", fallbackTried: false, volume: 100,
+      muted: false, paused: false, previousVolume: 100, textChannelId: null, mode: "queue", repeat: "off", history: [], seedIndex: 0, busy: false, recovering: false
     });
     return states.get(id);
   };
@@ -135,6 +135,52 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
         return name && !recent.has(name);
       });
       if (fresh.length) return fresh[Math.floor(Math.random() * Math.min(fresh.length, 5))];
+    }
+    return null;
+  }
+
+  async function findRandomTrack(s) {
+    if (!s.player?.node) return null;
+    const recent = new Set([s.current, s.lastPlayed, ...s.history.slice(0, 12)]
+      .map(t => String(t?.info?.title || "").toLowerCase()).filter(Boolean));
+    // Pick across languages and genres, not just tracks similar to the current song.
+    const queries = [
+      "popular Bangla modern songs",
+      "Bangla folk and baul songs",
+      "Bangla band rock songs",
+      "Bangla rap hip hop songs",
+      "Bangla romantic songs",
+      "Bangla adhunik classic songs",
+      "Bangla dance and party songs",
+      "popular Hindi Bollywood songs",
+      "Hindi indie pop songs",
+      "Hindi rap hip hop songs",
+      "Hindi romantic songs",
+      "English pop hits",
+      "English rock hits",
+      "funk music hits",
+      "disco funk dance music",
+      "R&B soul hits",
+      "hip hop rap hits",
+      "electronic dance music hits",
+      "K-pop hits",
+      "Arabic pop hits",
+      "Japanese J-pop hits",
+      "Latin pop hits"
+    ];
+    // Randomize the order so consecutive presses can move between styles/languages.
+    for (let i = queries.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [queries[i], queries[j]] = [queries[j], queries[i]];
+    }
+    for (const query of queries.slice(0, 6)) {
+      console.log("[Random Next] Searching:", query);
+      const tracks = await resolve(query, s.player.node);
+      const fresh = tracks.filter(t => {
+        const name = String(t.info?.title || "").toLowerCase();
+        return name && !recent.has(name);
+      });
+      if (fresh.length) return fresh[Math.floor(Math.random() * fresh.length)];
     }
     return null;
   }
@@ -391,12 +437,12 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     async toggleMute(id) {
       const s = get(id);
       if (!s.muted) {
-        s.previousVolume = s.volume || 70;
+        s.previousVolume = s.volume;
         s.muted = true;
         await this.volume(id, 0);
       } else {
         s.muted = false;
-        await this.volume(id, s.previousVolume || 70);
+        await this.volume(id, s.previousVolume);
       }
       return { muted: s.muted, volume: s.volume };
     },
@@ -422,7 +468,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       const s = get(id);
       if (!s.player) return false;
       const reference = s.current || s.lastPlayed;
-      const candidate = await findAutoplayTrack(s, reference);
+      const candidate = await findRandomTrack(s);
       if (!candidate) return false;
       if (s.current) {
         s.history.unshift(s.current);

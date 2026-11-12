@@ -21,6 +21,19 @@ const commands = [
     .addStringOption(o => o.setName("query").setDescription("Song name or Spotify track link").setRequired(true)),
   new SlashCommandBuilder().setName("player").setDescription("Show music player controls"),
   new SlashCommandBuilder().setName("queue").setDescription("Show the music queue"),
+  new SlashCommandBuilder().setName("nowplaying").setDescription("Show the current track"),
+  new SlashCommandBuilder().setName("shuffle").setDescription("Shuffle upcoming tracks"),
+  new SlashCommandBuilder().setName("clearqueue").setDescription("Clear upcoming tracks"),
+  new SlashCommandBuilder().setName("remove").setDescription("Remove a track from the queue")
+    .addIntegerOption(o => o.setName("position").setDescription("Queue position (starts at 1)").setMinValue(1).setRequired(true)),
+  new SlashCommandBuilder().setName("move").setDescription("Move a track in the queue")
+    .addIntegerOption(o => o.setName("from").setDescription("Current position").setMinValue(1).setRequired(true))
+    .addIntegerOption(o => o.setName("to").setDescription("New position").setMinValue(1).setRequired(true)),
+  new SlashCommandBuilder().setName("repeat").setDescription("Set repeat mode")
+    .addStringOption(o => o.setName("mode").setDescription("Repeat mode").setRequired(true)
+      .addChoices({name:"Off",value:"off"},{name:"Current track",value:"track"},{name:"Queue",value:"queue"})),
+  new SlashCommandBuilder().setName("seek").setDescription("Jump to a position in the current track")
+    .addIntegerOption(o => o.setName("seconds").setDescription("Position in seconds").setMinValue(0).setRequired(true)),
   new SlashCommandBuilder().setName("mode").setDescription("Set automatic music discovery mode")
     .addStringOption(o => o.setName("type").setDescription("Choose an autoplay style").setRequired(true)
       .addChoices(
@@ -136,7 +149,7 @@ client.on("interactionCreate", async interaction => {
         .addFields(
           { name: "Music", value: "/play query — গান চালাও\n/queue — Queue দেখো\n/join /leave — Voice control", inline: false },
           { name: "Autoplay", value: "/mode viral | bangla | global | mixed | off\n/autoplay enabled:true|false", inline: false },
-          { name: "Controls", value: "/pause /resume /skip /stop /volume value এবং Player buttons", inline: false }
+          { name: "Queue tools", value: "/shuffle /remove /move /clearqueue /repeat /seek /nowplaying", inline: false },\n          { name: "Controls", value: "/pause /resume /skip /stop /volume value এবং Player buttons", inline: false }
         ).setFooter({ text: "Spotify links identify songs; audio playback is provided by SoundCloud when available." });
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
@@ -194,8 +207,55 @@ client.on("interactionCreate", async interaction => {
       const upcoming = data.tracks.slice(0, 10).map((t, i) => (i + 1) + ". " + t.title).join("\n");
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎵 Pookie Play Queue")
         .setDescription(current + (upcoming ? "\n\n**পরের গানগুলো:**\n" + upcoming : "\n\nQueue খালি।"))
-        .setFooter({ text: "Autoplay: " + data.mode });
+        .setFooter({ text: "Autoplay: " + data.mode + " • Repeat: " + data.repeat });
       return interaction.reply({ embeds: [embed] });
+    }
+
+    if (name === "nowplaying") {
+      const data = music.getQueue(interaction.guildId);
+      if (!data.current) return interaction.reply("এখন কোনো গান চলছে না।");
+      const info = data.current;
+      const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎶 এখন বাজছে")
+        .setDescription("**" + info.title + "**\\n" + (info.author || "Unknown artist"))
+        .addFields({name:"Repeat",value:data.repeat,inline:true});
+      if (info.uri) embed.setURL(info.uri);
+      return interaction.reply({embeds:[embed],components:controlRows()});
+    }
+
+    if (name === "shuffle") {
+      const count = music.shuffle(interaction.guildId);
+      return interaction.reply(count > 1 ? "🔀 Queue shuffle করা হয়েছে (" + count + "টি গান)।" : "Shuffle করার মতো পর্যাপ্ত গান নেই।");
+    }
+
+    if (name === "clearqueue") {
+      const count = music.clearQueue(interaction.guildId);
+      return interaction.reply("🧹 Queue থেকে " + count + "টি upcoming গান সরানো হয়েছে। বর্তমান গান চলতে থাকবে।");
+    }
+
+    if (name === "remove") {
+      const position = interaction.options.getInteger("position", true);
+      const removed = music.remove(interaction.guildId, position);
+      return interaction.reply(removed ? "➖ সরানো হয়েছে: **" + removed.title + "**" : "ওই position-এ কোনো গান নেই।");
+    }
+
+    if (name === "move") {
+      const from = interaction.options.getInteger("from", true);
+      const to = interaction.options.getInteger("to", true);
+      return interaction.reply(music.move(interaction.guildId, from, to)
+        ? "↕️ Queue position পরিবর্তন করা হয়েছে।"
+        : "Position ভুল অথবা Queue-তে ওই গান নেই।");
+    }
+
+    if (name === "repeat") {
+      const mode = interaction.options.getString("mode", true);
+      music.setRepeat(interaction.guildId, mode);
+      return interaction.reply("🔁 Repeat mode: **" + mode + "**");
+    }
+
+    if (name === "seek") {
+      const seconds = interaction.options.getInteger("seconds", true);
+      const result = await music.seek(interaction.guildId, seconds * 1000);
+      return interaction.reply(result === false ? "এখন কোনো গান চলছে না।" : "⏩ " + seconds + " সেকেন্ডে নেওয়া হয়েছে।");
     }
 
     if (name === "player") {

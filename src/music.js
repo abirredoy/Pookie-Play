@@ -5,12 +5,12 @@ const MODE_SEEDS = {
   mixed: ["Bangla and global hits", "international viral songs", "Bangladesh popular songs"]
 };
 
-function createMusic(shoukaku) {
+function createMusic(shoukaku, onTrackStart = async () => {}) {
   const states = new Map();
   const get = (id) => {
     if (!states.has(id)) states.set(id, {
       player: null, queue: [], current: null, currentQuery: "", fallbackTried: false, volume: 70,
-      muted: false, previousVolume: 70, mode: "off", repeat: "off", history: [], seedIndex: 0, busy: false, recovering: false
+      muted: false, previousVolume: 70, textChannelId: null, mode: "off", repeat: "off", history: [], seedIndex: 0, busy: false, recovering: false
     });
     return states.get(id);
   };
@@ -133,28 +133,7 @@ function createMusic(shoukaku) {
     const failedTrack = s.current;
     console.error("[Music] Track failed:", detail || "unknown error");
     try {
-      if (!s.fallbackTried) {
-        s.fallbackTried = true;
-        const info = failedTrack?.info || {};
-        const fallbackQuery = [String(info.title || "").split(/[|–—]/)[0], info.author || ""]
-          .join(" ").replace(/\s*\([^)]*\)\s*$/, "").trim();
-        if (fallbackQuery) {
-          console.log("[Music] Track stream failed; trying Bandcamp, then SoundCloud:", fallbackQuery);
-          let fallbackTracks = await tryResolve("bcsearch:" + fallbackQuery, s.player?.node);
-          let fallbackTrack = fallbackTracks.find(track => track.info?.sourceName === "bandcamp") || fallbackTracks[0];
-          if (!fallbackTrack) {
-            fallbackTracks = await tryResolve("scsearch:" + fallbackQuery, s.player?.node);
-            fallbackTrack = fallbackTracks.find(track => track.info?.sourceName === "soundcloud") || fallbackTracks[0];
-          }
-          if (fallbackTrack && fallbackTrack.encoded !== failedTrack?.encoded) {
-            s.queue.unshift(fallbackTrack);
-            console.log("[Music] Independent-source fallback found:", fallbackTrack.info?.title || "untitled",
-              "| source:", fallbackTrack.info?.sourceName || "unknown");
-          } else {
-            console.warn("[Music] No independent-source fallback found.");
-          }
-        }
-      }
+      console.warn("[Music] Skipping failed stream without switching to a different source/version.");
       s.current = null;
     } finally {
       s.recovering = false;
@@ -165,6 +144,10 @@ function createMusic(shoukaku) {
   function attachEvents(guildId, player) {
     player.on("start", event => {
       console.log("[Music] Playback started:", event.track?.info?.title || "unknown track");
+      const s = get(guildId);
+      onTrackStart(guildId, s.current || event.track, {
+        textChannelId: s.textChannelId, volume: s.volume, repeat: s.repeat, mode: s.mode
+      }).catch(error => console.error("[Player message]", error));
     });
     player.on("end", event => {
       console.log("[Music] Track ended:", event.reason);
@@ -220,9 +203,10 @@ function createMusic(shoukaku) {
       if (s.player) await shoukaku.leaveVoiceChannel(id);
       states.delete(id);
     },
-    async play(id, channel, query) {
+    async play(id, channel, query, textChannelId) {
       await join(id, channel);
       const s = get(id);
+      if (textChannelId) s.textChannelId = textChannelId;
       const tracks = await resolve(query, s.player.node);
       if (!tracks.length) throw new Error("YouTube ও SoundCloud—কোনো সোর্স থেকেই গানটি পাওয়া যায়নি। অন্য নাম বা সরাসরি audio link দিয়ে চেষ্টা করো।");
       const isDirectUrl = /^https?:\/\//i.test(query);

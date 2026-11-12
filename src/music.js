@@ -305,7 +305,11 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
           s.history.unshift(finished);
           s.history = s.history.slice(0, 25);
           if (!s.quickMode) {
-            if (s.repeat === "track") {
+            if (s.mode === "auto") {
+              // Auto Mode always discovers a related next track; playlist repeat
+              // settings are reserved for Queue/Quick Mode.
+              s.autoSimilarTo = finished;
+            } else if (s.repeat === "track") {
               s.queue.unshift(finished);
             } else if (s.repeat === "queue") {
               s.queue.push(finished);
@@ -316,7 +320,6 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
                 [s.queue[i], s.queue[j]] = [s.queue[j], s.queue[i]];
               }
             }
-            if (s.mode === "auto" && s.repeat !== "track") s.autoSimilarTo = finished;
           }
         }
         s.current = null;

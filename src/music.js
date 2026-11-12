@@ -447,6 +447,27 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       if (wasIdle) await playNext(id);
       return { track: tracks[0], queued: !wasIdle, queueLength: s.queue.length };
     },
+    async searchTracks(id, query) {
+      const s = get(id);
+      if (!s.player?.node) throw new Error("আগে voice channel-এ যোগ দাও।");
+      return (await resolve(query, s.player.node)).slice(0, 10);
+    },
+    async playResolved(id, channel, track, textChannelId) {
+      await join(id, channel);
+      const s = get(id);
+      if (s.listMode) { s.listMode = false; s.listCurrentSlot = null; s.listOrder = []; }
+      s.mode = "auto";
+      if (textChannelId) s.textChannelId = textChannelId;
+      s.queue = [track];
+      s.currentQuery = String(track.info?.title || "");
+      s.fallbackTried = false;
+      if (s.current && s.player) {
+        await s.player.stopTrack();
+        s.current = null;
+      }
+      await playNext(id);
+      return { track, queued: false, queueLength: s.queue.length };
+    },
     async pause(id) {
       const s = get(id);
       if (!s.player || !s.current) return false;

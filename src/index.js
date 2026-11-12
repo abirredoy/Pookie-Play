@@ -350,15 +350,16 @@ client.on("interactionCreate", async interaction => {
       const enabled = name === "mode"
         ? interaction.options.getString("type", true) === "auto"
         : interaction.options.getBoolean("enabled", true);
+      await interaction.deferReply({ ephemeral: true });
       if (enabled) {
         const channel = await requireVoice(interaction);
         await music.join(interaction.guildId, channel);
-        music.setTextChannel?.(interaction.guildId, interaction.channelId);
+        music.setTextChannel(interaction.guildId, interaction.channelId);
       }
-      const mode = await music.setMode(interaction.guildId, enabled ? "auto" : "off");
-      return interaction.reply({ content: enabled
+      await music.setMode(interaction.guildId, enabled ? "auto" : "off");
+      return interaction.editReply(enabled
         ? "🤖 AutoPlay: ON — similar tracks will play after the current track, or a random popular track will start if the player is idle."
-        : "🤖 AutoPlay: OFF", ephemeral: true });
+        : "🤖 AutoPlay: OFF");
     }
 
     if (name === "queue") {

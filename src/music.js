@@ -191,7 +191,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     s.busy = true;
     let retry = false;
     try {
-      if (!s.queue.length && s.mode === "auto") {
+      if (!s.queue.length) {
         const candidate = await findAutoplayTrack(s, s.lastPlayed || s.current);
         if (candidate) s.queue.push(candidate);
       }

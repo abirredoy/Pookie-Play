@@ -6,10 +6,10 @@ module.exports = async (req, res) => {
   const state = req.query.state;
   if (!state || !cookies.pookie_oauth_state || state !== cookies.pookie_oauth_state) {
     clearCookie(res, "pookie_oauth_state");
-    return res.redirect(302, "/?error=oauth_state");
+    return res.redirect(302, "/control/?error=oauth_state");
   }
   clearCookie(res, "pookie_oauth_state");
-  if (req.query.error || !req.query.code) return res.redirect(302, "/?error=oauth_denied");
+  if (req.query.error || !req.query.code) return res.redirect(302, "/control/?error=oauth_denied");
   const clientId = process.env.DISCORD_OAUTH_CLIENT_ID;
   const clientSecret = process.env.DISCORD_OAUTH_CLIENT_SECRET;
   const redirectUri = process.env.DISCORD_OAUTH_REDIRECT_URI;
@@ -34,11 +34,11 @@ module.exports = async (req, res) => {
     });
     if (!userResponse.ok) throw new Error("Discord user lookup failed.");
     const user = await userResponse.json();
-    if (!isAllowed(user.id)) return res.redirect(302, "/?error=not_allowed");
+    if (!isAllowed(user.id)) return res.redirect(302, "/control/?error=not_allowed");
     setCookie(res, "pookie_session", issueSession(user), 604800);
-    return res.redirect(302, "/");
+    return res.redirect(302, "/control/");
   } catch (error) {
     console.error("[OAuth]", error.message);
-    return res.redirect(302, "/?error=oauth_failed");
+    return res.redirect(302, "/control/?error=oauth_failed");
   }
 };

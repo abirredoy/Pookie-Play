@@ -302,7 +302,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
         }
         s.current = null;
         // Auto mode behaves like a continuous radio. Queue mode waits for a manual Next.
-        if (s.mode === "auto" || s.repeat === "track" || s.repeat === "queue") {
+        if (s.mode === "auto" || s.queue.length > 0 || s.repeat === "track" || s.repeat === "queue") {
           playNext(guildId).catch(console.error);
         }
       }
@@ -346,6 +346,18 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       s.history = [];
       if (s.player) await shoukaku.leaveVoiceChannel(id);
       states.delete(id);
+    },
+    async add(id, channel, query, textChannelId) {
+      const s = get(id);
+      if (s.mode !== "queue") throw new Error("আগে /mode type:Queue Mode চালু করো। Auto Mode-এ /add ব্যবহার করা যাবে না।");
+      await join(id, channel);
+      if (textChannelId) s.textChannelId = textChannelId;
+      const tracks = await resolve(query, s.player.node);
+      if (!tracks.length) throw new Error("এই নাম বা লিংকের গানটি পাওয়া যায়নি। অন্য নাম বা সরাসরি song link দিয়ে চেষ্টা করো।");
+      const wasIdle = !s.current;
+      s.queue.push(tracks[0]);
+      if (wasIdle) await playNext(id);
+      return { track: tracks[0], queued: !wasIdle, queueLength: s.queue.length };
     },
     async play(id, channel, query, textChannelId) {
       await join(id, channel);

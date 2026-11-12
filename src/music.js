@@ -339,6 +339,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
         }
         s.current = null;
         if (s.listMode) {
+          if (finished) s.autoSimilarTo = finished;
           const slots = s.listOrder.length
             ? s.listOrder
             : Object.keys(s.listSlots).map(Number).filter(n => n >= 1 && n <= 10 && s.listSlots[n]).sort((a, b) => a - b);

@@ -234,6 +234,13 @@ client.on("interactionCreate", async interaction => {
         const embed = interaction.message.embeds[0]
           ? EmbedBuilder.from(interaction.message.embeds[0])
           : new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play");
+        if (id === "queue") {
+          const upcoming = q.tracks.slice(0, 15).map((t, i) => (i + 1) + ". " + t.title).join("\n");
+          embed.setDescription((q.current ? "**Now Playing:** " + q.current.title : "Nothing is playing") +
+            (upcoming ? "\n\n**Up Next:**\n" + upcoming : "\n\nQueue is empty."));
+        } else if (q.current) {
+          embed.setDescription("**" + q.current.title + "**\n" + (q.current.author || "Unknown artist"));
+        }
         embed.setFooter(playerStatusFooter(q, status));
         return interaction.update({ embeds: [embed], components: controlRows(q) });
       }
@@ -276,8 +283,8 @@ client.on("interactionCreate", async interaction => {
       const labels = {
         previous: "Previous track", pause: "Playback paused",
         resume: "Playback resumed", skip: "Next track selected",
-        stop: "Playback stopped", volume_down: "Volume: " + result.before + "% → " + result.after + "%",
-        volume_up: "Volume: " + result.before + "% → " + result.after + "%",
+        stop: "Playback stopped", volume_down: "Volume: " + (result?.before ?? "?") + "% → " + (result?.after ?? "?") + "%",
+        volume_up: "Volume: " + (result?.before ?? "?") + "% → " + (result?.after ?? "?") + "%",
         mute: result?.muted ? "Mute: ON" : "Mute: OFF",
         shuffle: "Queue shuffled", clearqueue: "Upcoming queue cleared",
         repeat_off: "Repeat: OFF", repeat_track: "Repeat: SONG", repeat_queue: "Repeat: QUEUE",
@@ -292,7 +299,7 @@ client.on("interactionCreate", async interaction => {
         ? EmbedBuilder.from(interaction.message.embeds[0])
         : new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play");
       embed.setFooter(playerStatusFooter(q, status));
-      return interaction.message.edit({ embeds: [embed], components: controlRows(q) });
+      return interaction.message.edit({ embeds: [embed], components: id === "leave" ? [] : controlRows(q) });
     }
     if (!interaction.isChatInputCommand()) return;
     const name = interaction.commandName;

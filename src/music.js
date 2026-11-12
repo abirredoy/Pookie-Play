@@ -43,24 +43,48 @@ function createMusic(shoukaku) {
     }
   }
 
+  async function linkMetadata(url) {
+    try {
+      let endpoint;
+      if (/open\.spotify\.com\/(track|album|playlist)\//i.test(url)) {
+        endpoint = "https://open.spotify.com/oembed?url=" + encodeURIComponent(url);
+      } else if (/(youtube\.com\/watch|youtu\.be\/)/i.test(url)) {
+        endpoint = "https://www.youtube.com/oembed?url=" + encodeURIComponent(url) + "&format=json";
+      } else return "";
+      const response = await fetch(endpoint, { headers: { "User-Agent": "PookiePlay/1.0" }, signal: AbortSignal.timeout(8000) });
+      if (!response.ok) return "";
+      const data = await response.json();
+      return [String(data.title || "").trim(), String(data.author_name || "").trim()].filter(Boolean).join(" ");
+    } catch (error) {
+      console.warn("[Music] Link metadata unavailable:", error?.message || error);
+      return "";
+    }
+  }
+
   async function resolve(query, node) {
     if (!node) {
       console.error("[Music] No Lavalink node available for search.");
       return [];
     }
+    let searchQuery = query;
     if (/^https?:\/\//i.test(query)) {
       const direct = await tryResolve(query, node);
       if (direct.length) return direct;
+      searchQuery = await linkMetadata(query);
+      if (!searchQuery) {
+        console.warn("[Music] Could not read song details from supplied link.");
+        return [];
+      }
+      console.log("[Music] Resolved link metadata to:", searchQuery);
     }
-    const yt = await tryResolve("ytsearch:" + query, node);
+    const yt = await tryResolve("ytsearch:" + searchQuery, node);
     if (yt.length) return yt;
-    const ytm = await tryResolve("ytmsearch:" + query, node);
+    const ytm = await tryResolve("ytmsearch:" + searchQuery, node);
     if (ytm.length) return ytm;
-    const sc = await tryResolve("scsearch:" + query, node);
+    const sc = await tryResolve("scsearch:" + searchQuery, node);
     if (sc.length) return sc;
     return [];
   }
-
   async function playNext(guildId) {
     const s = get(guildId);
     if (!s.player || s.busy) return false;

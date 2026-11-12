@@ -30,8 +30,8 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
   const get = (id) => {
     if (!states.has(id)) states.set(id, {
       player: null, queue: [], current: null, lastPlayed: null, currentQuery: "", fallbackTried: false, volume: 100,
-      muted: false, paused: false, previousVolume: 100, textChannelId: null, mode: "queue", repeat: "off", history: [], seedIndex: 0, busy: false, recovering: false,
-      quickSlots: {}, quickMode: false, quickCurrentSlot: null, quickOrder: [], autoSimilarTo: null
+      muted: false, paused: false, previousVolume: 100, textChannelId: null, mode: "auto", repeat: "off", history: [], seedIndex: 0, busy: false, recovering: false,
+      listSlots: {}, listMode: false, listCurrentSlot: null, listOrder: [], autoSimilarTo: null
     });
     return states.get(id);
   };
@@ -192,7 +192,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     s.busy = true;
     let retry = false;
     try {
-      if (!s.queue.length && s.mode === "auto" && !s.quickMode) {
+      if (!s.queue.length && s.mode === "auto" && !s.listMode) {
         // With no current track, start a random station pick. After a track ends,
         // autoSimilarTo is set to that finished track so the next pick is related.
         const seed = s.autoSimilarTo;
@@ -304,10 +304,10 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
           s.lastPlayed = finished;
           s.history.unshift(finished);
           s.history = s.history.slice(0, 25);
-          if (!s.quickMode) {
+          if (!s.listMode) {
             if (s.mode === "auto") {
               // Auto Mode always discovers a related next track; playlist repeat
-              // settings are reserved for Queue/Quick Mode.
+              // settings are reserved for Queue/List Mode.
               s.autoSimilarTo = finished;
             } else if (s.repeat === "track") {
               s.queue.unshift(finished);
@@ -323,40 +323,40 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
           }
         }
         s.current = null;
-        if (s.quickMode) {
-          const slots = s.quickOrder.length
-            ? s.quickOrder
-            : Object.keys(s.quickSlots).map(Number).filter(n => n >= 1 && n <= 10 && s.quickSlots[n]).sort((a, b) => a - b);
+        if (s.listMode) {
+          const slots = s.listOrder.length
+            ? s.listOrder
+            : Object.keys(s.listSlots).map(Number).filter(n => n >= 1 && n <= 10 && s.listSlots[n]).sort((a, b) => a - b);
           let nextSlot = null;
           if (s.repeat === "track") {
-            nextSlot = s.quickCurrentSlot;
+            nextSlot = s.listCurrentSlot;
           } else {
-            const currentIndex = slots.indexOf(Number(s.quickCurrentSlot));
+            const currentIndex = slots.indexOf(Number(s.listCurrentSlot));
             if (currentIndex >= 0 && currentIndex < slots.length - 1) nextSlot = slots[currentIndex + 1];
             else if (s.repeat === "queue" || s.repeat === "shuffle") {
               if (s.repeat === "shuffle") {
-                s.quickOrder = slots.slice();
-                for (let i = s.quickOrder.length - 1; i > 0; i--) {
+                s.listOrder = slots.slice();
+                for (let i = s.listOrder.length - 1; i > 0; i--) {
                   const j = Math.floor(Math.random() * (i + 1));
-                  [s.quickOrder[i], s.quickOrder[j]] = [s.quickOrder[j], s.quickOrder[i]];
+                  [s.listOrder[i], s.listOrder[j]] = [s.listOrder[j], s.listOrder[i]];
                 }
-                if (s.quickOrder.length > 1 && s.quickOrder[0] === s.quickCurrentSlot) {
-                  [s.quickOrder[0], s.quickOrder[1]] = [s.quickOrder[1], s.quickOrder[0]];
+                if (s.listOrder.length > 1 && s.listOrder[0] === s.listCurrentSlot) {
+                  [s.listOrder[0], s.listOrder[1]] = [s.listOrder[1], s.listOrder[0]];
                 }
               }
-              nextSlot = s.quickOrder[0] ?? slots[0] ?? null;
+              nextSlot = s.listOrder[0] ?? slots[0] ?? null;
             }
           }
-          if (nextSlot && s.quickSlots[nextSlot]) {
-            s.quickCurrentSlot = nextSlot;
-            s.queue = [s.quickSlots[nextSlot]];
+          if (nextSlot && s.listSlots[nextSlot]) {
+            s.listCurrentSlot = nextSlot;
+            s.queue = [s.listSlots[nextSlot]];
             playNext(guildId).catch(console.error);
           } else {
-            s.quickMode = false;
-            s.quickCurrentSlot = null;
-            s.quickOrder = [];
+            s.listMode = false;
+            s.listCurrentSlot = null;
+            s.listOrder = [];
             s.queue = [];
-            console.log("[Quick Mode] Playlist finished.");
+            console.log("[List Mode] Playlist finished.");
           }
         } else if (s.mode === "auto" || s.queue.length > 0 || s.repeat === "track" || s.repeat === "queue" || s.repeat === "shuffle") {
           playNext(guildId).catch(console.error);
@@ -406,7 +406,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     async add(id, channel, query, textChannelId) {
       const s = get(id);
       if (s.mode !== "queue") throw new Error("আগে /mode type:Queue Mode চালু করো। Auto Mode-এ /add ব্যবহার করা যাবে না।");
-      if (s.quickMode) throw new Error("Quick Mode চালু আছে। সাধারণ Queue-তে গান দিতে আগে /quick mode enabled:false করো।");
+      if (s.listMode) throw new Error("List Mode চালু আছে। সাধারণ Queue-তে গান দিতে আগে /list mode enabled:false করো।");
       await join(id, channel);
       if (textChannelId) s.textChannelId = textChannelId;
       const tracks = await resolve(query, s.player.node);
@@ -419,7 +419,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     async play(id, channel, query, textChannelId) {
       await join(id, channel);
       const s = get(id);
-      if (s.quickMode) { s.quickMode = false; s.quickCurrentSlot = null; }
+      if (s.listMode) { s.listMode = false; s.listCurrentSlot = null; s.listOrder = []; s.mode = "auto"; }
       if (textChannelId) s.textChannelId = textChannelId;
       const tracks = await resolve(query, s.player.node);
       if (!tracks.length) throw new Error("YouTube ও SoundCloud—কোনো সোর্স থেকেই গানটি পাওয়া যায়নি। অন্য নাম বা সরাসরি audio link দিয়ে চেষ্টা করো।");
@@ -467,37 +467,37 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       const skipped = s.current;
       s.history.unshift(skipped);
       s.history = s.history.slice(0, 25);
-      if (s.quickMode) {
-        let order = s.quickOrder.length
-          ? s.quickOrder.slice()
-          : Object.keys(s.quickSlots).map(Number).sort((a,b)=>a-b);
-        const currentIndex = order.indexOf(Number(s.quickCurrentSlot));
+      if (s.listMode) {
+        let order = s.listOrder.length
+          ? s.listOrder.slice()
+          : Object.keys(s.listSlots).map(Number).sort((a,b)=>a-b);
+        const currentIndex = order.indexOf(Number(s.listCurrentSlot));
         let next = currentIndex >= 0 ? order[currentIndex + 1] : null;
         if (!next && (s.repeat === "queue" || s.repeat === "shuffle")) {
           if (s.repeat === "shuffle") {
-            order = Object.keys(s.quickSlots).map(Number).sort((a,b)=>a-b);
+            order = Object.keys(s.listSlots).map(Number).sort((a,b)=>a-b);
             for (let i = order.length - 1; i > 0; i--) {
               const j = Math.floor(Math.random() * (i + 1));
               [order[i], order[j]] = [order[j], order[i]];
             }
-            if (order.length > 1 && order[0] === Number(s.quickCurrentSlot)) {
+            if (order.length > 1 && order[0] === Number(s.listCurrentSlot)) {
               [order[0], order[1]] = [order[1], order[0]];
             }
-            s.quickOrder = order;
+            s.listOrder = order;
           }
           next = order[0] ?? null;
         }
         await s.player.stopTrack();
         s.current = null;
-        if (!next || !s.quickSlots[next]) {
-          s.quickMode = false;
-          s.quickCurrentSlot = null;
-          s.quickOrder = [];
+        if (!next || !s.listSlots[next]) {
+          s.listMode = false;
+          s.listCurrentSlot = null;
+          s.listOrder = [];
           s.queue = [];
           return false;
         }
-        s.quickCurrentSlot = next;
-        s.queue = [s.quickSlots[next]];
+        s.listCurrentSlot = next;
+        s.queue = [s.listSlots[next]];
         return playNext(id);
       }
       if (s.mode === "auto") {
@@ -525,9 +525,9 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       s.queue = [];
       s.current = null;
       s.repeat = "off";
-      s.quickMode = false;
-      s.quickCurrentSlot = null;
-      s.quickOrder = [];
+      s.listMode = false;
+      s.listCurrentSlot = null;
+      s.listOrder = [];
       await s.player.stopTrack();
       return true;
     },
@@ -565,9 +565,9 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     async setMode(id, mode) {
       const s = get(id);
       s.mode = mode === "auto" ? "auto" : "queue";
-      s.quickMode = false;
-      s.quickCurrentSlot = null;
-      s.quickOrder = [];
+      s.listMode = false;
+      s.listCurrentSlot = null;
+      s.listOrder = [];
       if (s.mode === "auto") {
         s.queue = [];
         s.autoSimilarTo = null;
@@ -576,118 +576,126 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       return s.mode;
     },
     getMode(id) { return get(id).mode; },
-    async addQuick(id, channel, slot, query, textChannelId) {
+    async addList(id, channel, slot, query, textChannelId) {
       const s = get(id);
       const n = Number(slot);
-      if (!Number.isInteger(n) || n < 1 || n > 10) throw new Error("Quick Slot অবশ্যই 1 থেকে 10-এর মধ্যে হতে হবে।");
-      if (s.quickSlots[n]) throw new Error("Quick Slot " + n + " আগে থেকেই ভর্তি। অন্য Slot বেছে নাও অথবা আগে remove করো।");
+      if (!Number.isInteger(n) || n < 1 || n > 10) throw new Error("List Slot অবশ্যই 1 থেকে 10-এর মধ্যে হতে হবে।");
+      if (s.listSlots[n]) throw new Error("List Slot " + n + " আগে থেকেই ভর্তি। অন্য Slot বেছে নাও অথবা আগে remove করো।");
       await join(id, channel);
       if (textChannelId) s.textChannelId = textChannelId;
       const tracks = await resolve(query, s.player.node);
       if (!tracks.length) throw new Error("এই গানটি পাওয়া যায়নি। অন্য নাম বা লিংক দিয়ে চেষ্টা করো।");
-      s.quickSlots[n] = tracks[0];
-      return { slot: n, track: tracks[0], count: Object.keys(s.quickSlots).length };
+      s.listSlots[n] = tracks[0];
+      return { slot: n, track: tracks[0], count: Object.keys(s.listSlots).length };
     },
-    async removeQuick(id, slot) {
+    async removeList(id, slot) {
       const s = get(id), n = Number(slot);
-      if (!s.quickSlots[n]) return null;
-      const removed = s.quickSlots[n];
-      delete s.quickSlots[n];
-      if (s.quickMode && s.quickCurrentSlot === n) {
-        s.quickMode = false;
-        s.quickCurrentSlot = null;
-        s.quickOrder = [];
+      if (!s.listSlots[n]) return null;
+      const removed = s.listSlots[n];
+      delete s.listSlots[n];
+      if (s.listMode && s.listCurrentSlot === n) {
+        s.listMode = false;
+        s.listCurrentSlot = null;
+        s.listOrder = [];
         if (s.player && s.current) { await s.player.stopTrack(); s.current = null; }
       }
       return { slot: n, info: removed.info };
     },
-    clearQuick(id) {
-      const s = get(id), count = Object.keys(s.quickSlots).length;
-      s.quickSlots = {};
-      s.quickMode = false;
-      s.quickCurrentSlot = null;
-      s.quickOrder = [];
+    clearList(id) {
+      const s = get(id), count = Object.keys(s.listSlots).length;
+      s.listSlots = {};
+      s.listMode = false;
+      s.listCurrentSlot = null;
+      s.listOrder = [];
       return count;
     },
-    getQuickSlots(id) {
+    getListSlots(id) {
       const s = get(id);
-      return Object.keys(s.quickSlots).map(Number).sort((a,b)=>a-b).map(slot => ({ slot, info: s.quickSlots[slot].info }));
+      return Object.keys(s.listSlots).map(Number).sort((a,b)=>a-b).map(slot => ({ slot, info: s.listSlots[slot].info }));
     },
-    exportQuickSlots() {
+    exportListSlots() {
       const out = {};
       for (const [guildId, s] of states) {
         const slots = {};
-        for (const [slot, track] of Object.entries(s.quickSlots || {})) {
+        for (const [slot, track] of Object.entries(s.listSlots || {})) {
           if (track?.encoded) slots[slot] = { encoded: track.encoded, info: track.info || {} };
         }
         if (Object.keys(slots).length) out[guildId] = slots;
       }
       return out;
     },
-    loadQuickSlots(saved = {}) {
+    loadListSlots(saved = {}) {
       for (const [guildId, slots] of Object.entries(saved || {})) {
         const s = get(guildId);
-        s.quickSlots = {};
+        s.listSlots = {};
         for (const [slot, track] of Object.entries(slots || {})) {
           const n = Number(slot);
-          if (Number.isInteger(n) && n >= 1 && n <= 10 && track?.encoded) s.quickSlots[n] = track;
+          if (Number.isInteger(n) && n >= 1 && n <= 10 && track?.encoded) s.listSlots[n] = track;
         }
       }
     },
-    async setQuickMode(id, enabled) {
+    async setListMode(id, enabled) {
       const s = get(id);
       if (!enabled) {
-        s.quickMode = false;
-        s.quickCurrentSlot = null;
-        s.quickOrder = [];
+        s.listMode = false;
+        s.listCurrentSlot = null;
+        s.listOrder = [];
+        s.mode = "auto";
+        s.queue = [];
+        s.autoSimilarTo = s.current || s.autoSimilarTo;
+        if (s.player && !s.current) await playNext(id);
         return false;
       }
-      const slots = Object.keys(s.quickSlots).map(Number).sort((a,b)=>a-b);
-      if (!slots.length) throw new Error("Quick List খালি। আগে /quick add দিয়ে গান যোগ করো।");
+      const slots = Object.keys(s.listSlots).map(Number).sort((a,b)=>a-b);
+      if (!slots.length) throw new Error("List খালি। আগে /list add দিয়ে গান যোগ করো।");
       if (!s.player) throw new Error("আগে voice channel-এ যোগ দাও।");
       s.mode = "queue";
-      s.quickMode = true;
-      s.quickOrder = slots.slice();
+      s.listMode = true;
+      s.listOrder = slots.slice();
       if (s.repeat === "shuffle") {
-        for (let i = s.quickOrder.length - 1; i > 0; i--) {
+        for (let i = s.listOrder.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
-          [s.quickOrder[i], s.quickOrder[j]] = [s.quickOrder[j], s.quickOrder[i]];
+          [s.listOrder[i], s.listOrder[j]] = [s.listOrder[j], s.listOrder[i]];
         }
       }
-      s.quickCurrentSlot = s.quickOrder[0];
-      s.queue = [s.quickSlots[s.quickCurrentSlot]];
+      s.listCurrentSlot = s.listOrder[0];
+      s.queue = [s.listSlots[s.listCurrentSlot]];
       if (s.current) await s.player.stopTrack();
       s.current = null;
       await playNext(id);
       return true;
     },
-    async playQuick(id, channel, slot, textChannelId) {
+    async playList(id, channel, slot, textChannelId) {
       const s = get(id), n = Number(slot);
-      if (!s.quickSlots[n]) throw new Error("Quick Slot " + n + " খালি। আগে /quick add দিয়ে গান রাখো।");
+      if (!s.listSlots[n]) throw new Error("List Slot " + n + " খালি। আগে /list add দিয়ে গান রাখো।");
       await join(id, channel);
       if (textChannelId) s.textChannelId = textChannelId;
       s.mode = "queue";
-      s.quickMode = true;
-      s.quickOrder = Object.keys(s.quickSlots).map(Number).sort((a,b)=>a-b);
+      s.listMode = true;
+      s.listOrder = Object.keys(s.listSlots).map(Number).sort((a,b)=>a-b);
       if (s.repeat === "shuffle") {
-        for (let i = s.quickOrder.length - 1; i > 0; i--) {
+        for (let i = s.listOrder.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
-          [s.quickOrder[i], s.quickOrder[j]] = [s.quickOrder[j], s.quickOrder[i]];
+          [s.listOrder[i], s.listOrder[j]] = [s.listOrder[j], s.listOrder[i]];
         }
       }
-      s.quickCurrentSlot = n;
+      s.listCurrentSlot = n;
       if (s.repeat === "shuffle") {
-        s.quickOrder = [n, ...s.quickOrder.filter(slot => slot !== n)];
+        s.listOrder = [n, ...s.listOrder.filter(slot => slot !== n)];
       }
-      s.queue = [s.quickSlots[n]];
+      s.queue = [s.listSlots[n]];
       if (s.current) await s.player.stopTrack();
       s.current = null;
       await playNext(id);
-      return { slot: n, track: s.quickSlots[n] };
+      return { slot: n, track: s.listSlots[n] };
     },
     async randomNext(id) {
       const s = get(id);
       if (!s.player) return false;
+      s.listMode = false;
+      s.listCurrentSlot = null;
+      s.listOrder = [];
+      s.mode = "auto";
       const candidate = await findRandomTrack(s);
       if (!candidate) return false;
       if (s.current) {
@@ -739,15 +747,15 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     setRepeat(id, mode) {
       const s = get(id);
       s.repeat = ["off", "track", "queue", "shuffle"].includes(mode) ? mode : "off";
-      if (s.quickMode && s.repeat === "shuffle") {
-        const slots = Object.keys(s.quickSlots).map(Number).sort((a,b)=>a-b);
-        s.quickOrder = [Number(s.quickCurrentSlot), ...slots.filter(n => n !== Number(s.quickCurrentSlot))];
-        for (let i = s.quickOrder.length - 1; i > 1; i--) {
+      if (s.listMode && s.repeat === "shuffle") {
+        const slots = Object.keys(s.listSlots).map(Number).sort((a,b)=>a-b);
+        s.listOrder = [Number(s.listCurrentSlot), ...slots.filter(n => n !== Number(s.listCurrentSlot))];
+        for (let i = s.listOrder.length - 1; i > 1; i--) {
           const j = 1 + Math.floor(Math.random() * i);
-          [s.quickOrder[i], s.quickOrder[j]] = [s.quickOrder[j], s.quickOrder[i]];
+          [s.listOrder[i], s.listOrder[j]] = [s.listOrder[j], s.listOrder[i]];
         }
-      } else if (s.quickMode) {
-        s.quickOrder = Object.keys(s.quickSlots).map(Number).sort((a,b)=>a-b);
+      } else if (s.listMode) {
+        s.listOrder = Object.keys(s.listSlots).map(Number).sort((a,b)=>a-b);
       } else if (s.repeat === "shuffle") {
         for (let i = s.queue.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
@@ -758,7 +766,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     },
     getQueue(id) {
       const s = get(id);
-      return { current: s.current?.info || null, tracks: s.queue.map(t => t.info), mode: s.mode, quickMode: s.quickMode, quickCurrentSlot: s.quickCurrentSlot, quickSlots: Object.keys(s.quickSlots).length, repeat: s.repeat, volume: s.volume, muted: s.muted, paused: s.paused, node: s.player?.node?.name || "Disconnected", connected: Boolean(s.player), history: s.history.map(t => t.info) };
+      return { current: s.current?.info || null, tracks: s.queue.map(t => t.info), mode: s.mode, listMode: s.listMode, listCurrentSlot: s.listCurrentSlot, listSlots: Object.keys(s.listSlots).length, repeat: s.repeat, volume: s.volume, muted: s.muted, paused: s.paused, node: s.player?.node?.name || "Disconnected", connected: Boolean(s.player), history: s.history.map(t => t.info) };
     }
   };
 }

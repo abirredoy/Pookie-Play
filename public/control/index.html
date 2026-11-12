@@ -1,91 +1,41 @@
 <!DOCTYPE html>
-<html lang="bn" class="dark">
+<html lang="bn">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#070b14">
-<title>POOKIE PLAY — Workflow Control Panel</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-<script>
-tailwind.config={darkMode:'class',theme:{extend:{fontFamily:{sans:['"Hind Siliguri"','Inter','sans-serif'],mono:['"JetBrains Mono"','monospace']},colors:{slate:{950:'#070b14'}}}}};
-</script>
-<style>
-body{background:#070b14;background-image:radial-gradient(at 0% 0%,rgba(79,70,229,.14) 0,transparent 50%),radial-gradient(at 100% 100%,rgba(16,185,129,.10) 0,transparent 50%);min-height:100vh}
-.glass-card{background:rgba(15,23,42,.72);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(148,163,184,.12)}
-.pulse-ring{animation:pulse-ring 2s cubic-bezier(.24,0,.38,1) infinite}
-@keyframes pulse-ring{0%{transform:scale(.95);opacity:.7}50%{transform:scale(1.35);opacity:0}100%{transform:scale(.95);opacity:0}}
-.spin-slow{animation:spin 3s linear infinite}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#070b14" />
+  <title>Pookie Play Bot Controller</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="text-slate-100 antialiased selection:bg-indigo-500 selection:text-white flex flex-col justify-between">
-<header class="border-b border-slate-800/80 bg-slate-950/60 backdrop-blur-md sticky top-0 z-30">
- <div class="max-w-4xl mx-auto px-4 py-3.5 flex items-center justify-between gap-3">
-  <div class="flex items-center gap-3">
-   <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20"><i class="fa-brands fa-github text-xl text-white"></i></div>
-   <div><h1 class="text-lg sm:text-xl font-bold tracking-tight text-white leading-tight">POOKIE PLAY</h1><p class="text-xs text-slate-400">সিঙ্গেল-ইনস্ট্যান্স অটোমেশন কন্ট্রোল</p></div>
+<body class="bg-slate-950 text-white min-h-screen flex flex-col items-center justify-center p-4 font-sans selection:bg-indigo-500 selection:text-white">
+  <div class="max-w-lg w-full bg-slate-900/80 backdrop-blur-xl border border-slate-800/80 rounded-3xl p-8 shadow-2xl shadow-indigo-950/20 text-center relative overflow-hidden">
+    <div class="absolute top-4 right-6 text-xs text-slate-400 font-mono bg-slate-950/60 px-3 py-1 rounded-full border border-slate-800" id="liveClock">লোড হচ্ছে...</div>
+    <h1 class="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400 mb-1">Pookie Play Bot</h1>
+    <p class="text-slate-400 text-sm mb-6">সার্ভার ও বট লাইভ কন্ট্রোল প্যানেল</p>
+    <div id="statusBox" class="p-6 rounded-2xl bg-slate-950/80 border border-slate-800/80 mb-6 transition-all duration-300">
+      <p id="statusText" class="text-lg font-semibold text-slate-300 mb-3">স্ট্যাটাস চেক করা হচ্ছে...</p>
+      <div id="metaDetails" class="grid grid-cols-2 gap-3 text-xs text-slate-400 border-t border-slate-800/60 pt-4 mt-2 text-left hidden">
+        <div><span class="block text-slate-500">শুরুর সময় / স্থায়িত্ব:</span><span id="runDuration" class="font-mono text-emerald-400 font-medium">-</span></div>
+        <div><span class="block text-slate-500">শেষ বন্ধ হওয়ার সময়:</span><span id="stoppedAgo" class="font-mono text-slate-300 font-medium">-</span></div>
+      </div>
+    </div>
+    <button id="startBtn" disabled class="hidden w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-95 transition font-bold text-white shadow-lg shadow-emerald-900/30 cursor-pointer text-base disabled:opacity-50 disabled:cursor-not-allowed">▶ স্টার্ট ওয়ার্কফ্লো</button>
+    <p id="msgText" class="mt-4 text-sm font-medium" role="status" aria-live="polite"></p>
+    <p class="mt-5 text-xs text-slate-500"><i class="fa-solid fa-lock"></i> নিরাপদ Backend সংযোগ • কোনো Token এই পেজে রাখা নেই</p>
   </div>
-  <button id="refreshBtn" class="p-2.5 rounded-xl bg-slate-900/90 border border-slate-700/70 text-slate-300 hover:text-white hover:border-indigo-500/50 transition text-sm flex items-center gap-2"><i id="refreshIcon" class="fa-solid fa-rotate"></i><span class="hidden sm:inline">রিফ্রেশ</span></button>
- </div>
-</header>
-<main class="max-w-4xl w-full mx-auto px-4 py-6 sm:py-10 flex-grow space-y-6">
- <div id="alertBox" class="hidden rounded-2xl p-4 border text-sm flex items-start gap-3"><i id="alertIcon" class="fa-solid fa-circle-info mt-0.5"></i><div id="alertMessage" class="flex-grow"></div><button id="closeAlert" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button></div>
- <section class="glass-card rounded-3xl p-5 sm:p-7 shadow-2xl">
-  <div class="flex items-center justify-between gap-3 mb-4">
-   <div class="flex items-center gap-2.5"><div class="w-8 h-8 rounded-lg bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400"><i class="fa-solid fa-sliders"></i></div><div><h2 class="text-base sm:text-lg font-bold text-white">কন্ট্রোল প্যানেল</h2><p class="text-xs text-slate-400">নিরাপদ Backend Secret দিয়ে GitHub সংযুক্ত</p></div></div>
-   <span class="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-medium"><i class="fa-solid fa-shield-halved mr-1"></i>Token সুরক্ষিত</span>
-  </div>
-  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-   <div class="rounded-xl bg-slate-900/70 border border-slate-800 p-3"><p class="text-xs text-slate-400 mb-1">GitHub Repository</p><p class="font-mono text-sm text-indigo-300">abirredoy / Pookie-Play</p></div>
-   <div class="rounded-xl bg-slate-900/70 border border-slate-800 p-3"><p class="text-xs text-slate-400 mb-1">Workflow / Branch</p><p class="font-mono text-sm text-indigo-300">start-bot.yml / main</p></div>
-  </div>
-  <p class="text-xs text-slate-500 mt-3"><i class="fa-solid fa-lock mr-1 text-emerald-400"></i>এই পেজে কোনো Token ইনপুট নেই। Token শুধু Cloudflare Worker Secret-এ থাকবে।</p>
- </section>
- <section class="glass-card rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
-  <div class="flex flex-wrap items-center justify-between gap-3 pb-6 border-b border-slate-800/80">
-   <div class="flex items-center gap-2.5 text-sm"><span class="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700/80 font-mono text-xs text-indigo-300">abirredoy / Pookie-Play</span><span class="text-xs text-slate-400 hidden sm:inline"><i class="fa-solid fa-code-branch mr-1 text-slate-500"></i>main</span></div>
-   <span class="text-xs text-slate-400 flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-slate-600" id="pollDot"></span><span id="lastChecked">অপেক্ষমান...</span></span>
-  </div>
-  <div class="py-8 sm:py-10 flex flex-col items-center text-center">
-   <div class="relative mb-6 flex items-center justify-center w-24 h-24"><div id="orbRing" class="absolute inset-0 rounded-full bg-slate-600/20"></div><div id="orb" class="relative w-20 h-20 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center shadow-xl transition-all duration-500"><i id="statusIcon" class="fa-solid fa-power-off text-3xl text-slate-400"></i></div></div>
-   <div id="statusPill" class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-semibold tracking-wide bg-slate-800 text-slate-300 border border-slate-700 mb-3"><span id="statusDot" class="w-2 h-2 rounded-full bg-slate-400"></span><span id="statusTag">স্ট্যাটাস চেক করা হচ্ছে</span></div>
-   <h2 id="statusTitle" class="text-2xl sm:text-3xl font-bold text-white mb-2">স্ট্যাটাস দেখা হচ্ছে…</h2>
-   <p id="statusDesc" class="text-sm sm:text-base text-slate-400 max-w-lg leading-relaxed">GitHub Actions থেকে বটের বর্তমান অবস্থা নেওয়া হচ্ছে।</p>
-   <div id="runDetails" class="hidden mt-6 w-full max-w-md rounded-2xl bg-slate-900/90 border border-slate-800 p-4 text-left space-y-2.5">
-    <div class="flex items-center justify-between text-xs"><span class="text-slate-400">Run ID:</span><span class="font-mono font-semibold text-slate-200" id="runId">—</span></div>
-    <div class="flex items-center justify-between text-xs"><span class="text-slate-400">বর্তমান অবস্থা:</span><span class="font-mono font-semibold text-amber-400" id="runStatus">—</span></div>
-    <div class="flex items-center justify-between text-xs"><span class="text-slate-400">সর্বশেষ শুরু:</span><span class="text-slate-200" id="runTime">—</span></div>
-    <div class="pt-1 border-t border-slate-800/80 flex items-center justify-between text-xs"><span class="text-slate-400"><i class="fa-solid fa-lock text-rose-400 mr-1"></i>ডাবল রান লক:</span><span class="text-emerald-400 font-medium">চালু</span></div>
-   </div>
-   <div class="mt-8 w-full max-w-md">
-    <button id="startBtn" disabled class="w-full py-4 px-6 rounded-2xl font-bold text-base sm:text-lg text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-slate-800 disabled:to-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed shadow-xl shadow-emerald-600/20 disabled:shadow-none transition-all duration-300 flex items-center justify-center gap-3 active:scale-[.98]"><i id="startIcon" class="fa-solid fa-play"></i><span id="startText">স্ট্যাটাস দেখা হচ্ছে…</span></button>
-    <div id="lockedBox" class="hidden w-full py-4 px-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 flex flex-col items-center justify-center gap-1.5"><div class="flex items-center gap-2 font-bold text-base text-amber-300"><i class="fa-solid fa-shield-halved"></i><span>Pookie Play is already running</span></div><p class="text-xs text-amber-200/80">একটি Workflow চলমান আছে। এটি শেষ না হওয়া পর্যন্ত নতুন রান চালু করা যাবে না।</p></div>
-   </div>
-  </div>
-  <div class="pt-5 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-slate-400">
-   <div class="flex items-center gap-2 bg-slate-900/50 px-3 py-2 rounded-xl border border-slate-800/60"><i class="fa-solid fa-ban text-rose-400"></i><span>বন্ধ (Cancel) করার অপশন নেই</span></div>
-   <div class="flex items-center gap-2 bg-slate-900/50 px-3 py-2 rounded-xl border border-slate-800/60"><i class="fa-solid fa-layer-group text-amber-400"></i><span>চলমান রান থাকলে Start বন্ধ</span></div>
-   <div class="flex items-center gap-2 bg-slate-900/50 px-3 py-2 rounded-xl border border-slate-800/60"><i class="fa-solid fa-arrows-rotate text-indigo-400"></i><span>প্রতি ৬ সেকেন্ডে অটো চেক</span></div>
-  </div>
- </section>
-</main>
-<footer class="border-t border-slate-800/60 py-4 text-center text-xs text-slate-500"><div class="max-w-4xl mx-auto px-4">GitHub Actions Single-Instance Runner • Pookie Play</div></footer>
 <script>
-const $=id=>document.getElementById(id);
-const el={dot:$('pollDot'),checked:$('lastChecked'),ring:$('orbRing'),orb:$('orb'),icon:$('statusIcon'),pill:$('statusPill'),smallDot:$('statusDot'),tag:$('statusTag'),title:$('statusTitle'),desc:$('statusDesc'),details:$('runDetails'),runId:$('runId'),runStatus:$('runStatus'),runTime:$('runTime'),start:$('startBtn'),startIcon:$('startIcon'),startText:$('startText'),locked:$('lockedBox'),alert:$('alertBox'),alertIcon:$('alertIcon'),alertMessage:$('alertMessage'),refreshIcon:$('refreshIcon')};
-let active=false,busy=false,failed=false;
-function alert(type,msg){el.alert.className='rounded-2xl p-4 border text-sm flex items-start gap-3 '+(type==='error'?'bg-rose-500/10 border-rose-500/30 text-rose-200':type==='success'?'bg-emerald-500/10 border-emerald-500/30 text-emerald-200':'bg-indigo-500/10 border-indigo-500/30 text-indigo-200');el.alertIcon.className='fa-solid mt-0.5 '+(type==='error'?'fa-circle-exclamation text-rose-400':type==='success'?'fa-circle-check text-emerald-400':'fa-circle-info text-indigo-400');el.alertMessage.textContent=msg;}
-function clearAlert(){el.alert.classList.add('hidden');}
-function time(v){if(!v)return '—';try{return new Date(v).toLocaleString('bn-BD');}catch{return v;}}
-function renderRunning(d){active=true;failed=false;el.ring.className='absolute inset-0 rounded-full bg-amber-500/30 pulse-ring';el.orb.className='relative w-20 h-20 rounded-full bg-amber-500/15 border-2 border-amber-400 flex items-center justify-center shadow-xl shadow-amber-500/20';el.icon.className='fa-solid fa-gear text-3xl text-amber-400 spin-slow';el.pill.className='inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-semibold tracking-wide bg-amber-500/15 text-amber-300 border border-amber-500/30 mb-3';el.smallDot.className='w-2 h-2 rounded-full bg-amber-400 animate-ping';el.tag.textContent=d.state==='starting'?'কিউতে আছে (QUEUED)':'চলমান (IN PROGRESS)';el.title.textContent='Pookie Play is already running';el.desc.textContent='তোমার বট GitHub Actions-এ চলছে। শেষ না হওয়া পর্যন্ত আরেকটি রান চালু করা যাবে না।';el.details.classList.remove('hidden');el.runId.textContent=d.runId?'#'+d.runId:'—';el.runStatus.textContent=d.runStatus||'—';el.runTime.textContent=time(d.lastRunStartedAt);el.start.classList.add('hidden');el.locked.classList.remove('hidden');}
-function renderStopped(d){active=false;failed=false;el.ring.className='absolute inset-0 rounded-full bg-emerald-500/10';el.orb.className='relative w-20 h-20 rounded-full bg-slate-900 border-2 border-emerald-500/60 flex items-center justify-center shadow-xl shadow-emerald-500/10';el.icon.className='fa-solid fa-circle-check text-3xl text-emerald-400';el.pill.className='inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 mb-3';el.smallDot.className='w-2 h-2 rounded-full bg-emerald-400';el.tag.textContent='প্রস্তুত (STOPPED / READY)';el.title.textContent='Pookie Play is offline.';el.desc.textContent='বর্তমানে কোনো Workflow চলছে না। নিচের Start বাটনে চাপলে বট চালু হবে।';if(d.runId){el.details.classList.remove('hidden');el.runId.textContent='#'+d.runId;el.runStatus.textContent=(d.runStatus||'completed')+(d.conclusion?' ('+d.conclusion+')':'');el.runTime.textContent=time(d.lastRunStartedAt||d.lastRunCompletedAt);}else el.details.classList.add('hidden');el.locked.classList.add('hidden');el.start.classList.remove('hidden');el.start.disabled=busy;el.startIcon.className=busy?'fa-solid fa-spinner fa-spin':'fa-solid fa-play';el.startText.textContent=busy?'রিকোয়েস্ট পাঠানো হচ্ছে…':'ওয়ার্কফ্লো চালু করুন (Start)';}
-function renderError(msg){failed=true;active=false;el.ring.className='absolute inset-0 rounded-full bg-rose-500/10';el.orb.className='relative w-20 h-20 rounded-full bg-rose-500/10 border-2 border-rose-500/50 flex items-center justify-center shadow-xl';el.icon.className='fa-solid fa-triangle-exclamation text-3xl text-rose-400';el.pill.className='inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-semibold bg-rose-500/15 text-rose-300 border border-rose-500/30 mb-3';el.smallDot.className='w-2 h-2 rounded-full bg-rose-400';el.tag.textContent='সংযোগ সমস্যা';el.title.textContent='Status unavailable';el.desc.textContent=msg;el.details.classList.add('hidden');el.locked.classList.add('hidden');el.start.classList.remove('hidden');el.start.disabled=true;el.startText.textContent='এখন Start করা যাচ্ছে না';}
-async function refresh(manual=false){if(manual)el.refreshIcon.classList.add('fa-spin');try{const r=await fetch('/api/status',{cache:'no-store'});const d=await r.json().catch(()=>({}));if(!r.ok||d.state==='unknown'||d.state==='setup_required')throw new Error([d.message,d.githubStatus?'HTTP '+d.githubStatus:'',d.detail].filter(Boolean).join(' — ')||'স্ট্যাটাস পাওয়া যাচ্ছে না।');if(d.active)renderRunning(d);else renderStopped(d);el.dot.className='w-2 h-2 rounded-full bg-emerald-400';el.checked.textContent='আপডেট: '+new Date().toLocaleTimeString('bn-BD');}catch(e){renderError(e.message||'কানেকশন সমস্যা।');el.dot.className='w-2 h-2 rounded-full bg-rose-500';el.checked.textContent='আপডেট ব্যর্থ';}finally{el.refreshIcon.classList.remove('fa-spin');}}
-async function start(){if(active||busy||failed)return;busy=true;el.start.disabled=true;el.startIcon.className='fa-solid fa-spinner fa-spin';el.startText.textContent='রিকোয়েস্ট পাঠানো হচ্ছে…';clearAlert();try{const r=await fetch('/api/start',{method:'POST'});const d=await r.json().catch(()=>({}));if(r.status===409&&d.alreadyRunning){alert('info','বট ইতিমধ্যে চালু আছে।');}else if(!r.ok)throw new Error([d.error,d.githubStatus?'HTTP '+d.githubStatus:'',d.detail].filter(Boolean).join(' — ')||'Start request ব্যর্থ হয়েছে।');else alert('success','Start request সফলভাবে GitHub Actions-এ পাঠানো হয়েছে। বট চালু হতে একটু সময় লাগতে পারে।');}catch(e){alert('error',e.message||'Start request পাঠানো যায়নি।');}finally{busy=false;await refresh();}}
-$('startBtn').addEventListener('click',start);$('refreshBtn').addEventListener('click',()=>refresh(true));$('closeAlert').addEventListener('click',clearAlert);refresh();setInterval(()=>refresh(false),6000);
+const $ = id => document.getElementById(id);
+const statusText=$('statusText'), statusBox=$('statusBox'), startBtn=$('startBtn');
+const msgText=$('msgText'), liveClock=$('liveClock'), metaDetails=$('metaDetails');
+const runDuration=$('runDuration'), stoppedAgo=$('stoppedAgo');
+let active=false, busy=false, lastData=null;
+function updateClock(){liveClock.textContent=new Date().toLocaleTimeString('bn-BD',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}
+function duration(ms){if(!Number.isFinite(ms)||ms<0)return '—';const sec=Math.floor(ms/1000),m=Math.floor(sec/60),h=Math.floor(m/60);if(h)return h+' ঘণ্টা '+m%60+' মিনিট';if(m)return m+' মিনিট '+sec%60+' সেকেন্ড';return sec+' সেকেন্ড';}
+function showError(message){active=false;statusBox.className='p-6 rounded-2xl bg-rose-950/30 border border-rose-700/50 mb-6';statusText.textContent=message||'স্ট্যাটাস পাওয়া যাচ্ছে না';startBtn.classList.remove('hidden');startBtn.disabled=true;startBtn.textContent='এখন Start করা যাচ্ছে না';metaDetails.classList.add('hidden');}
+function render(data){lastData=data;active=!!data.active;metaDetails.classList.remove('hidden');if(active){startBtn.classList.add('hidden');statusBox.className='p-6 rounded-2xl bg-amber-950/30 border border-amber-500/40 mb-6 shadow-lg shadow-amber-950/20';statusText.innerHTML='<span class="inline-block w-3 h-3 rounded-full bg-amber-400 animate-ping mr-2"></span><span class="text-amber-300 font-bold">রান ওয়ার্কফ্লো ইজ অলরেডি রানিং</span>';const started=data.lastRunStartedAt?new Date(data.lastRunStartedAt).getTime():NaN;runDuration.textContent=Number.isFinite(started)?'চলছে: '+duration(Date.now()-started):'চলছে';stoppedAgo.textContent='বট বর্তমানে লাইভ আছে';}else{statusBox.className='p-6 rounded-2xl bg-slate-950/80 border border-slate-800/80 mb-6';statusText.innerHTML='<span class="inline-block w-3 h-3 rounded-full bg-slate-500 mr-2"></span><span class="text-slate-300">বট বর্তমানে বন্ধ আছে</span>';runDuration.textContent='নিষ্ক্রিয়';if(data.lastRunCompletedAt){const ended=new Date(data.lastRunCompletedAt).getTime();stoppedAgo.textContent=duration(Date.now()-ended)+' আগে বন্ধ হয়েছে';}else stoppedAgo.textContent='রেকর্ড নেই';startBtn.classList.remove('hidden');startBtn.disabled=busy;startBtn.textContent=busy?'রিকোয়েস্ট পাঠানো হচ্ছে...':'▶ স্টার্ট ওয়ার্কফ্লো';}}
+async function checkStatus(){try{const res=await fetch('/api/status',{cache:'no-store'});const data=await res.json();if(!res.ok||data.state==='unknown'||data.state==='setup_required')throw new Error(data.detail||data.message||'সার্ভার সংযোগে সমস্যা');render(data);}catch(e){showError(e.message==='Failed to fetch'?'নেটওয়ার্ক কানেকশন পাওয়া যাচ্ছে না!':e.message);}}
+async function startWorkflow(){if(active||busy)return;busy=true;startBtn.disabled=true;startBtn.textContent='রিকোয়েস্ট পাঠানো হচ্ছে...';msgText.textContent='';try{const res=await fetch('/api/start',{method:'POST'});const data=await res.json().catch(()=>({}));if(res.status===409&&data.alreadyRunning){msgText.className='mt-4 text-sm text-amber-400 font-medium';msgText.textContent='রান ওয়ার্কফ্লো ইজ অলরেডি রানিং';}else if(!res.ok){throw new Error(data.detail||data.error||'Start request ব্যর্থ হয়েছে');}else{msgText.className='mt-4 text-sm text-emerald-400 font-medium';msgText.textContent='ওয়ার্কফ্লো সফলভাবে চালু করার রিকোয়েস্ট পাঠানো হয়েছে!';}}catch(e){msgText.className='mt-4 text-sm text-rose-400 font-medium';msgText.textContent=e.message||'সার্ভার রিকোয়েস্ট ব্যর্থ হয়েছে!';}finally{busy=false;await checkStatus();}}
+startBtn.addEventListener('click',startWorkflow);updateClock();setInterval(updateClock,1000);checkStatus();setInterval(checkStatus,7000);
 </script>
 </body>
 </html>

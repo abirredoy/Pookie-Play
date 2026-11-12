@@ -33,7 +33,7 @@ async function refresh(){
  try{
   const response=await fetch("/api/status",{cache:"no-store"});
   const raw=await response.text();let data;try{data=JSON.parse(raw)}catch{throw new Error("API থেকে JSON পাওয়া যায়নি (HTTP "+response.status+")। Cloudflare Worker deployment বা API route পরীক্ষা করো।")};
-  if(!response.ok||data.state==="unknown"||data.state==="setup_required")throw new Error(data.message||"স্ট্যাটাস পাওয়া যাচ্ছে না।");
+  if(!response.ok||data.state==="unknown"||data.state==="setup_required"){const detail=[data.message,data.githubStatus?"HTTP "+data.githubStatus:"",data.detail].filter(Boolean).join(" — ");throw new Error(detail||"স্ট্যাটাস পাওয়া যাচ্ছে না।");}
   active=Boolean(data.active);
   if(active){
    dot.className="dot "+(data.state==="starting"?"starting":"online");

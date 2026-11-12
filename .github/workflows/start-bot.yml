@@ -8,7 +8,7 @@ permissions:
 
 concurrency:
   group: pookie-play-bot
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   run-bot:

@@ -72,22 +72,21 @@ const shoukaku = new Shoukaku(new Connectors.DiscordJS(client), nodes, {
 shoukaku.on("ready", name => console.log("[Lavalink] Connected:", name));
 shoukaku.on("error", (name, error) => console.error("[Lavalink] Error:", name, error));
 shoukaku.on("close", (name, code, reason) => console.warn("[Lavalink] Closed:", name, code, reason));
+const playerMessages = new Map();
 const music = createMusic(shoukaku, async (guildId, track, state) => {
   try {
     const channel = state.textChannelId ? await client.channels.fetch(state.textChannelId) : null;
     if (!channel || !channel.isTextBased()) return;
     const info = track.info || {};
+    const q = music.getQueue(guildId);
     const embed = new EmbedBuilder().setColor(0x5865f2)
       .setTitle("🎶 Now Playing")
-      .setDescription("**" + String(info.title || "Unknown track").slice(0, 240) + "**\\n" + String(info.author || "Unknown artist").slice(0, 180))
-      .addFields(
-        { name: "🎧 Source", value: String(info.sourceName || "Audio source"), inline: true },
-        { name: "🔊 Volume", value: String(state.volume) + "%", inline: true },
-        { name: "🔁 Repeat", value: state.repeat, inline: true }
-      )
-      .setFooter({ text: "🤖 Auto Mode: " + (state.mode === "auto" ? "ON" : "OFF") + " • 📜 Queue Mode: " + (state.mode === "queue" ? "ON" : "OFF") + "\n📍 Status: Player ready" });
+      .setDescription("**" + String(info.title || "Unknown track").slice(0, 240) + "**\\n" + String(info.author || "Unknown artist").slice(0, 180));
+    setPlayerStats(embed, q);
+    embed.setFooter({ text: "🤖 Auto Mode: " + (state.mode === "auto" ? "ON" : "OFF") + " • 📜 Queue Mode: " + (state.mode === "queue" ? "ON" : "OFF") + "\\n📍 Status: Player ready" });
     if (info.uri) embed.setURL(info.uri);
-    await channel.send({ embeds: [embed], components: controlRows(music.getQueue(guildId)) });
+    const message = await channel.send({ embeds: [embed], components: controlRows(q) });
+    playerMessages.set(guildId, message);
   } catch (error) {
     console.error("[Player message] Could not post track card:", error?.message || error);
   }
@@ -168,6 +167,20 @@ function playerStatusFooter(q, status = "Ready") {
   return { text: "🤖 Auto Mode: " + auto + " • 📜 Queue Mode: " + queue + " • Repeat: " + repeat + "\n📍 Status: " + String(status).slice(0, 130) };
 }
 
+function setPlayerStats(embed, q = {}) {
+  const current = q.current || {};
+  const mode = q.mode === "auto" ? "Auto" : "Queue";
+  embed.setFields(
+    { name: "🎧 Source", value: String(current.sourceName || "Unknown"), inline: true },
+    { name: "🔊 Volume", value: String(Number.isFinite(q.volume) ? q.volume : 100) + "%", inline: true },
+    { name: "🔁 Repeat", value: String(q.repeat || "off").toUpperCase(), inline: true },
+    { name: "🎚️ Playback", value: mode + (q.paused ? " • Paused" : " • Playing"), inline: true },
+    { name: "📜 Upcoming", value: String(q.tracks?.length ?? 0) + " tracks", inline: true },
+    { name: "🖥️ Audio Node", value: String(q.node || "Disconnected"), inline: true }
+  );
+  return embed;
+}
+
 function controlRows(q = {}) {
   const button = (id, label, style = ButtonStyle.Secondary) =>
     new ButtonBuilder().setCustomId("pookie_" + id).setLabel(label).setStyle(style);
@@ -245,8 +258,11 @@ client.on("interactionCreate", async interaction => {
         } else if (q.current) {
           embed.setDescription("**" + q.current.title + "**\n" + (q.current.author || "Unknown artist"));
         }
+        setPlayerStats(embed, q);
         embed.setFooter(playerStatusFooter(q, status));
-        return interaction.update({ embeds: [embed], components: controlRows(q) });
+        const updated = await interaction.update({ embeds: [embed], components: controlRows(q) });
+        playerMessages.set(interaction.guildId, interaction.message);
+        return updated;
       }
       const simpleActions = {
         previous: () => music.previous(interaction.guildId),
@@ -306,8 +322,12 @@ client.on("interactionCreate", async interaction => {
       const embed = interaction.message.embeds[0]
         ? EmbedBuilder.from(interaction.message.embeds[0])
         : new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play");
+      setPlayerStats(embed, q);
       embed.setFooter(playerStatusFooter(q, status));
-      return interaction.message.edit({ embeds: [embed], components: id === "leave" ? [] : controlRows(q) });
+      const updated = await interaction.message.edit({ embeds: [embed], components: id === "leave" ? [] : controlRows(q) });
+      if (id === "leave") playerMessages.delete(interaction.guildId);
+      else playerMessages.set(interaction.guildId, interaction.message);
+      return updated;
     }
     if (!interaction.isChatInputCommand()) return;
     const name = interaction.commandName;
@@ -452,6 +472,14 @@ client.on("interactionCreate", async interaction => {
     if (name === "volume") {
       const value = interaction.options.getInteger("value", true);
       const actual = await music.volume(interaction.guildId, value);
+      const savedMessage = playerMessages.get(interaction.guildId);
+      if (savedMessage?.embeds?.[0]) {
+        const q = music.getQueue(interaction.guildId);
+        const embed = EmbedBuilder.from(savedMessage.embeds[0]);
+        setPlayerStats(embed, q);
+        await savedMessage.edit({ embeds: [embed], components: controlRows(q) }).catch(error =>
+          console.warn("[Player card] Could not refresh volume display:", error?.message || error));
+      }
       return interaction.reply("🔊 Volume: " + actual + "%");
     }
   } catch (error) {

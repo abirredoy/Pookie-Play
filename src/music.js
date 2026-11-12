@@ -31,7 +31,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     if (!states.has(id)) states.set(id, {
       player: null, queue: [], current: null, lastPlayed: null, currentQuery: "", fallbackTried: false, volume: 100,
       muted: false, paused: false, previousVolume: 100, textChannelId: null, mode: "auto", repeat: "off", history: [], seedIndex: 0, busy: false, recovering: false,
-      listSlots: {}, listMode: false, listCurrentSlot: null, listOrder: [], autoSimilarTo: null
+      listSlots: {}, listMode: false, listCurrentSlot: null, listOrder: [], autoSimilarTo: null, autoFilling: false
     });
     return states.get(id);
   };
@@ -107,8 +107,8 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
   }
   async function findAutoplayTrack(s, similarTo = null) {
     if (!s.player?.node) return null;
-    const recent = new Set([s.current, s.lastPlayed, ...s.history.slice(0, 8)]
-      .map(t => String(t?.info?.title || "").toLowerCase()).filter(Boolean));
+    const recent = new Set([s.current, s.lastPlayed, ...s.history.slice(0, 8), ...s.queue]
+      .map(t => String(t?.info?.title || "").trim().toLowerCase()).filter(Boolean));
     const info = similarTo?.info || null;
     const artist = String(info?.author || "").split(/[,&|]/)[0].trim();
     const title = String(info?.title || "").trim();
@@ -138,6 +138,28 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       if (fresh.length) return fresh[Math.floor(Math.random() * Math.min(fresh.length, 5))];
     }
     return null;
+  }
+
+  async function fillAutoQueue(guildId, targetSize = 5) {
+    const s = get(guildId);
+    if (s.autoFilling || s.mode !== "auto" || s.listMode || s.repeat === "track" || !s.player?.node) return;
+    s.autoFilling = true;
+    try {
+      while (s.mode === "auto" && !s.listMode && s.repeat !== "track" && s.player?.node && s.queue.length < targetSize) {
+        const seed = s.current || s.autoSimilarTo || s.lastPlayed;
+        const candidate = await findAutoplayTrack(s, seed);
+        if (!candidate) {
+          console.warn("[AutoPlay] Could not find another related track; will retry when playback advances.");
+          break;
+        }
+        s.queue.push(candidate);
+        console.log("[AutoPlay] Added to upcoming queue:", candidate.info?.title || "untitled", "| queued:", s.queue.length);
+      }
+    } catch (error) {
+      console.error("[AutoPlay] Queue fill failed:", error?.message || error);
+    } finally {
+      s.autoFilling = false;
+    }
   }
 
   async function findRandomTrack(s) {
@@ -294,6 +316,9 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       onTrackStart(guildId, s.current || event.track, {
         textChannelId: s.textChannelId, volume: s.volume, repeat: s.repeat, mode: s.mode
       }).catch(error => console.error("[Player message]", error));
+      if (s.mode === "auto" && !s.listMode) {
+        fillAutoQueue(guildId).catch(error => console.error("[AutoPlay] Queue fill error:", error));
+      }
     });
     player.on("end", event => {
       console.log("[Music] Track ended:", event.reason);
@@ -593,6 +618,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
         s.queue = [];
         s.autoSimilarTo = null;
         if (s.player && !s.current) await playNext(id);
+        else if (s.player && s.current) fillAutoQueue(id).catch(console.error);
       }
       return s.mode;
     },

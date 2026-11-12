@@ -89,8 +89,16 @@ function createMusic(shoukaku) {
     }
   }
 
-  async function recoverTrack(guildId, detail) {
+  async function recoverTrack(guildId, detail, eventTrack) {
     const s = get(guildId);
+    if (!s.current) {
+      console.log("[Music] Ignoring failure event; no active track.");
+      return;
+    }
+    if (eventTrack?.encoded && s.current.encoded !== eventTrack.encoded) {
+      console.log("[Music] Ignoring stale failure event for a previous track.");
+      return;
+    }
     if (s.recovering) {
       console.log("[Music] Ignoring duplicate track failure event.");
       return;
@@ -130,8 +138,8 @@ function createMusic(shoukaku) {
         playNext(guildId).catch(console.error);
       }
     });
-    player.on("exception", event => recoverTrack(guildId, event.exception || event.error).catch(console.error));
-    player.on("stuck", event => recoverTrack(guildId, event).catch(console.error));
+    player.on("exception", event => recoverTrack(guildId, event.exception || event.error, event.track).catch(console.error));
+    player.on("stuck", event => recoverTrack(guildId, event, event.track).catch(console.error));
   }
 
   async function join(guildId, channel) {

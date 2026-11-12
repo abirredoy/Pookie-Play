@@ -217,9 +217,20 @@ function createMusic(shoukaku) {
       const s = get(id);
       const tracks = await resolve(query, s.player.node);
       if (!tracks.length) throw new Error("YouTube বা SoundCloud-এ এই গানটি পাওয়া যায়নি। অন্য নাম দিয়ে চেষ্টা করো।");
+      const isDirectUrl = /^https?:\/\//i.test(query);
       const wasIdle = !s.current;
       s.currentQuery = query;
       s.fallbackTried = false;
+
+      // A supplied URL is an explicit version choice: put it first and start it now.
+      if (isDirectUrl && s.current && s.player) {
+        s.queue.unshift(...tracks.slice(0, 1));
+        await s.player.stopTrack();
+        s.current = null;
+        await playNext(id);
+        return { track: tracks[0], queued: false, queueLength: s.queue.length };
+      }
+
       s.queue.push(tracks[0], ...tracks.slice(1, 4));
       if (wasIdle) await playNext(id);
       return { track: tracks[0], queued: !wasIdle, queueLength: s.queue.length };

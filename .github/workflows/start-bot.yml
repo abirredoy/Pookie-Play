@@ -74,12 +74,12 @@ jobs:
 
           docker run -d --name pookie-lavalink -p 2333:2333 -v "$PWD/application.yml:/opt/Lavalink/application.yml:ro" -e JAVA_TOOL_OPTIONS="-Xmx1G" ghcr.io/lavalink-devs/lavalink:4
 
-          for attempt in $(seq 1 90); do
+          for attempt in $(seq 1 180); do
             if curl -fsS -H "Authorization: $LAVALINK_PASSWORD" http://127.0.0.1:2333/version >/dev/null; then
               echo "Lavalink is ready."
               exit 0
             fi
-            if [ "$attempt" -eq 90 ]; then
+            if [ "$attempt" -eq 180 ]; then
               echo "Lavalink did not become ready. Container logs:"
               docker logs pookie-lavalink
               exit 1

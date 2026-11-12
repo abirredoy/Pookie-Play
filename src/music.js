@@ -77,10 +77,6 @@ function createMusic(shoukaku) {
       }
       console.log("[Music] Resolved link metadata to:", searchQuery);
     }
-    const yt = await tryResolve("ytsearch:" + searchQuery, node);
-    if (yt.length) return yt;
-    const ytm = await tryResolve("ytmsearch:" + searchQuery, node);
-    if (ytm.length) return ytm;
     const sc = await tryResolve("scsearch:" + searchQuery, node);
     if (sc.length) return sc;
     return [];
@@ -216,7 +212,7 @@ function createMusic(shoukaku) {
       await join(id, channel);
       const s = get(id);
       const tracks = await resolve(query, s.player.node);
-      if (!tracks.length) throw new Error("YouTube বা SoundCloud-এ এই গানটি পাওয়া যায়নি। অন্য নাম দিয়ে চেষ্টা করো।");
+      if (!tracks.length) throw new Error("SoundCloud-এ এই গানটি পাওয়া যায়নি। অন্য নাম দিয়ে চেষ্টা করো।");
       const isDirectUrl = /^https?:\/\//i.test(query);
       const wasIdle = !s.current;
       s.currentQuery = query;

@@ -232,7 +232,8 @@ client.on("interactionCreate", async interaction => {
           { name: "Music", value: "/play query — গান চালাও\n/queue — Queue দেখো\n/join /leave — Voice control", inline: false },
           { name: "Autoplay", value: "/mode viral | bangla | global | mixed | off\n/autoplay enabled:true|false", inline: false },
           { name: "Queue tools", value: "/shuffle /remove /move /clearqueue /repeat /seek /nowplaying", inline: false },
-          { name: "Controls", value: "/pause /resume /skip /stop /volume value এবং Player buttons", inline: false }
+          { name: "Controls", value: "/pause /resume /skip /stop /volume value এবং Player buttons", inline: false },
+          { name: "Admin", value: "/controlrole role — কোন Role বট নিয়ন্ত্রণ করবে সেট করো (Manage Server permission প্রয়োজন)", inline: false }
         ).setFooter({ text: "Sources: YouTube • YouTube Music • SoundCloud (যেটি পাওয়া যায়)।" });
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }

@@ -81,16 +81,16 @@ function createMusic(shoukaku) {
     if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) {
       throw new Error("শুধু public HTTP/HTTPS লিংক সমর্থিত।");
     }
-    const host = parsed.hostname.toLowerCase().replace(/^www\\./, "");
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
     if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") ||
-        /^(127\\.|10\\.|192\\.168\\.|169\\.254\\.|0\\.)/.test(host) ||
-        /^172\\.(1[6-9]|2[0-9]|3[0-1])\\./.test(host) || host === "::1") {
+        /^(127\.|10\.|192\.168\.|169\.254\.|0\.)/.test(host) ||
+        /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host) || host === "::1") {
       throw new Error("Private/local network link চালানো যাবে না।");
     }
 
     // Convert ordinary public Google Drive share links to its public download endpoint.
     if (host === "drive.google.com") {
-      const match = parsed.pathname.match(/\\/file\\/d\\/([a-zA-Z0-9_-]+)/);
+      const match = parsed.pathname.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
       const id = match?.[1] || parsed.searchParams.get("id");
       if (id) return "https://drive.google.com/uc?export=download&id=" + encodeURIComponent(id);
     }
@@ -99,14 +99,14 @@ function createMusic(shoukaku) {
 
   function isKnownMediaLink(raw) {
     const u = new URL(raw);
-    const host = u.hostname.toLowerCase().replace(/^www\\./, "");
+    const host = u.hostname.toLowerCase().replace(/^www\./, "");
     const knownHosts = [
       "youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com",
       "soundcloud.com", "on.soundcloud.com", "vimeo.com", "player.vimeo.com",
       "twitch.tv", "clips.twitch.tv", "bandcamp.com", "drive.google.com",
       "dropbox.com", "dl.dropboxusercontent.com", "archive.org", "streamable.com"
     ];
-    const mediaPath = /\\.(mp3|m4a|aac|wav|flac|ogg|opus|mp4|m4v|webm|mov|mkv)(?:$|\\?)/i.test(u.pathname);
+    const mediaPath = /\.(mp3|m4a|aac|wav|flac|ogg|opus|mp4|m4v|webm|mov|mkv)(?:$|\?)/i.test(u.pathname);
     return knownHosts.some(domain => host === domain || host.endsWith("." + domain)) || mediaPath;
   }
 

@@ -1,7 +1,7 @@
 require("dotenv").config();
 const {
   Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder,
-  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits
+  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, PermissionFlagsBits
 } = require("discord.js");
 const express = require("express");
 const { Shoukaku, Connectors } = require("shoukaku");
@@ -79,7 +79,26 @@ const shoukaku = new Shoukaku(new Connectors.DiscordJS(client), nodes, {
 shoukaku.on("ready", name => console.log("[Lavalink] Connected:", name));
 shoukaku.on("error", (name, error) => console.error("[Lavalink] Error:", name, error));
 shoukaku.on("close", (name, code, reason) => console.warn("[Lavalink] Closed:", name, code, reason));
-const music = createMusic(shoukaku);
+const music = createMusic(shoukaku, async (guildId, track, state) => {
+  try {
+    const channel = state.textChannelId ? await client.channels.fetch(state.textChannelId) : null;
+    if (!channel || !channel.isTextBased()) return;
+    const info = track.info || {};
+    const embed = new EmbedBuilder().setColor(0x5865f2)
+      .setTitle("🎶 এখন বাজছে")
+      .setDescription("**" + String(info.title || "Unknown track").slice(0, 240) + "**\\n" + String(info.author || "Unknown artist").slice(0, 180))
+      .addFields(
+        { name: "🎧 Source", value: String(info.sourceName || "Audio source"), inline: true },
+        { name: "🔊 Volume", value: String(state.volume) + "%", inline: true },
+        { name: "🔁 Repeat", value: state.repeat, inline: true }
+      )
+      .setFooter({ text: "🤖 AutoPlay: " + state.mode + " • নতুন গান শুরু হলে নতুন Player আসবে" });
+    if (info.uri) embed.setURL(info.uri);
+    await channel.send({ embeds: [embed], components: controlRows() });
+  } catch (error) {
+    console.error("[Player message] Could not post track card:", error?.message || error);
+  }
+});
 const controlRoles = new Map();
 
 async function loadControlRoles() {
@@ -152,42 +171,38 @@ function hasControlPermission(interaction) {
 function controlRows() {
   const button = (id, label, style = ButtonStyle.Secondary) =>
     new ButtonBuilder().setCustomId("pookie_" + id).setLabel(label).setStyle(style);
+  const modeMenu = new StringSelectMenuBuilder()
+    .setCustomId("pookie_mode_select")
+    .setPlaceholder("🎚️ AutoPlay mode বেছে নাও")
+    .addOptions(
+      { label: "Bangla", value: "bangla", emoji: "🇧🇩", description: "বাংলা গান" },
+      { label: "Global", value: "global", emoji: "🌍", description: "আন্তর্জাতিক জনপ্রিয় গান" },
+      { label: "Viral / Popular", value: "viral", emoji: "🔥", description: "জনপ্রিয় ও ভাইরাল গান" },
+      { label: "Bangla + Global Mix", value: "mixed", emoji: "🎧", description: "বাংলা ও বিদেশি গানের মিশ্রণ" },
+      { label: "Off", value: "off", emoji: "⏹️", description: "AutoPlay বন্ধ" }
+    );
   return [
     new ActionRowBuilder().addComponents(
-      button("previous", "⏮️ Previous"),
-      button("pause", "⏸️ Pause"),
-      button("resume", "▶️ Resume", ButtonStyle.Success),
-      button("skip", "⏭️ Next", ButtonStyle.Primary),
+      button("previous", "⏮️ Previous"), button("pause", "⏸️ Pause"),
+      button("resume", "▶️ Resume", ButtonStyle.Success), button("skip", "⏭️ Next", ButtonStyle.Primary),
       button("stop", "⏹️ Stop", ButtonStyle.Danger)
     ),
     new ActionRowBuilder().addComponents(
-      button("volume_down", "🔉 Volume −"),
-      button("volume_up", "🔊 Volume +"),
-      button("mute", "🔇 Mute"),
-      button("shuffle", "🔀 Shuffle"),
+      button("volume_down", "🔉 Volume −"), button("volume_up", "🔊 Volume +"),
+      button("mute", "🔇 Mute"), button("shuffle", "🔀 Shuffle"),
       button("clearqueue", "🧹 Clear Queue", ButtonStyle.Danger)
     ),
     new ActionRowBuilder().addComponents(
-      button("repeat_off", "➡️ Repeat Off"),
-      button("repeat_track", "🔂 Repeat Song"),
-      button("repeat_queue", "🔁 Repeat Queue"),
-      button("autoplay", "🤖 AutoPlay", ButtonStyle.Success),
-      button("autoplay_mode", "🎚️ Auto Mode")
+      button("repeat_off", "➡️ Repeat Off"), button("repeat_track", "🔂 Repeat Song"),
+      button("repeat_queue", "🔁 Repeat Queue"), button("autoplay", "🤖 AutoPlay", ButtonStyle.Success),
+      button("seek_back", "⏪ −10 sec")
     ),
     new ActionRowBuilder().addComponents(
-      button("seek_back", "⏪ −10 sec"),
-      button("seek_forward", "⏩ +10 sec"),
-      button("restart", "🔄 Restart"),
-      button("nowplaying", "🎵 Now Playing", ButtonStyle.Primary),
-      button("queue", "📜 Queue", ButtonStyle.Primary)
-    ),
-    new ActionRowBuilder().addComponents(
-      button("vol25", "🔈 25%"),
-      button("vol50", "🔉 50%"),
-      button("vol75", "🔊 75%"),
-      button("vol100", "📢 100%"),
+      button("seek_forward", "⏩ +10 sec"), button("restart", "🔄 Restart"),
+      button("nowplaying", "🎵 Now Playing", ButtonStyle.Primary), button("queue", "📜 Queue", ButtonStyle.Primary),
       button("leave", "👋 Leave VC", ButtonStyle.Danger)
-    )
+    ),
+    new ActionRowBuilder().addComponents(modeMenu)
   ];
 }
 
@@ -213,6 +228,16 @@ client.once("ready", async () => {
 
 client.on("interactionCreate", async interaction => {
   try {
+    if (interaction.isStringSelectMenu() && interaction.customId === "pookie_mode_select") {
+      if (!interaction.guildId) return;
+      if (!hasControlPermission(interaction)) {
+        return interaction.reply({ content: "⛔ এই Player নিয়ন্ত্রণ করার অনুমতি তোমার নেই।", ephemeral: true });
+      }
+      const mode = interaction.values[0];
+      music.setMode(interaction.guildId, mode);
+      const names = { bangla: "🇧🇩 Bangla", global: "🌍 Global", viral: "🔥 Viral / Popular", mixed: "🎧 Bangla + Global Mix", off: "⏹️ Off" };
+      return interaction.reply({ content: "🎚️ AutoPlay mode সেট হয়েছে: **" + names[mode] + "**", ephemeral: true });
+    }
     if (interaction.isButton()) {
       if (!interaction.guildId) return;
       if (!hasControlPermission(interaction)) {
@@ -235,7 +260,6 @@ client.on("interactionCreate", async interaction => {
         repeat_track: () => music.setRepeat(interaction.guildId, "track"),
         repeat_queue: () => music.setRepeat(interaction.guildId, "queue"),
         autoplay: () => music.setMode(interaction.guildId, data.mode === "off" ? "mixed" : "off"),
-        autoplay_mode: () => music.cycleMode(interaction.guildId),
         seek_back: () => music.seekRelative(interaction.guildId, -10000),
         seek_forward: () => music.seekRelative(interaction.guildId, 10000),
         restart: () => music.seek(interaction.guildId, 0),
@@ -273,7 +297,6 @@ client.on("interactionCreate", async interaction => {
         repeat_track: "🔂 বর্তমান গান repeat হবে।",
         repeat_queue: "🔁 পুরো queue repeat হবে।",
         autoplay: result === "off" ? "🤖 AutoPlay বন্ধ।" : "🤖 AutoPlay চালু।",
-        autoplay_mode: "🎚️ AutoPlay mode: " + result,
         seek_back: "⏪ ১০ সেকেন্ড পেছনে নেওয়া হয়েছে।",
         seek_forward: "⏩ ১০ সেকেন্ড সামনে নেওয়া হয়েছে।",
         restart: "🔄 গানটি শুরু থেকে চালানো হচ্ছে।",
@@ -322,17 +345,10 @@ client.on("interactionCreate", async interaction => {
       const query = interaction.options.getString("query", true);
       const channel = await requireVoice(interaction);
       await interaction.deferReply();
-      const result = await music.play(interaction.guildId, channel, query);
-      const info = result.track.info;
-      const embed = new EmbedBuilder().setColor(0x5865f2)
-        .setTitle(result.queued ? "➕ Queue-তে যোগ হয়েছে" : "🎶 এখন বাজছে")
-        .setDescription("**" + (info.title || query).slice(0, 240) + "**\n" + (info.author || "Unknown artist"))
-        .addFields(
-          { name: "Source", value: info.sourceName || "Audio source", inline: true },
-          { name: "Queue", value: String(result.queueLength), inline: true }
-        );
-      if (info.uri) embed.setURL(info.uri);
-      return interaction.editReply({ embeds: [embed], components: controlRows() });
+      const result = await music.play(interaction.guildId, channel, query, interaction.channelId);
+      return interaction.editReply(result.queued
+        ? "➕ **" + result.track.info.title + "** Queue-তে যোগ হয়েছে। গান শুরু হলে নতুন Player card আসবে।"
+        : "🎶 **" + result.track.info.title + "** চালু হচ্ছে। নতুন Player card পাঠানো হচ্ছে।");
     }
 
     if (name === "join") {

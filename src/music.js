@@ -30,7 +30,8 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
   const get = (id) => {
     if (!states.has(id)) states.set(id, {
       player: null, queue: [], current: null, lastPlayed: null, currentQuery: "", fallbackTried: false, volume: 100,
-      muted: false, paused: false, previousVolume: 100, textChannelId: null, mode: "queue", repeat: "off", history: [], seedIndex: 0, busy: false, recovering: false
+      muted: false, paused: false, previousVolume: 100, textChannelId: null, mode: "queue", repeat: "off", history: [], seedIndex: 0, busy: false, recovering: false,
+      quickSlots: {}, quickMode: false, quickCurrentSlot: null
     });
     return states.get(id);
   };
@@ -297,12 +298,28 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
           s.lastPlayed = finished;
           s.history.unshift(finished);
           s.history = s.history.slice(0, 25);
-          if (s.repeat === "track") s.queue.unshift(finished);
-          else if (s.repeat === "queue") s.queue.push(finished);
+          if (!s.quickMode) {
+            if (s.repeat === "track") s.queue.unshift(finished);
+            else if (s.repeat === "queue") s.queue.push(finished);
+          }
         }
         s.current = null;
-        // Auto mode behaves like a continuous radio. Queue mode waits for a manual Next.
-        if (s.mode === "auto" || s.queue.length > 0 || s.repeat === "track" || s.repeat === "queue") {
+        if (s.quickMode) {
+          const slots = Object.keys(s.quickSlots).map(Number).filter(n => n >= 1 && n <= 10 && s.quickSlots[n]).sort((a, b) => a - b);
+          let nextSlot = null;
+          if (s.repeat === "track") nextSlot = s.quickCurrentSlot;
+          else nextSlot = slots.find(n => n > Number(s.quickCurrentSlot || 0)) ?? (s.repeat === "queue" ? slots[0] : null);
+          if (nextSlot && s.quickSlots[nextSlot]) {
+            s.quickCurrentSlot = nextSlot;
+            s.queue = [s.quickSlots[nextSlot]];
+            playNext(guildId).catch(console.error);
+          } else {
+            s.quickMode = false;
+            s.quickCurrentSlot = null;
+            s.queue = [];
+            console.log("[Quick Mode] Playlist finished.");
+          }
+        } else if (s.mode === "auto" || s.queue.length > 0 || s.repeat === "track" || s.repeat === "queue") {
           playNext(guildId).catch(console.error);
         }
       }
@@ -471,14 +488,104 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     async setMode(id, mode) {
       const s = get(id);
       s.mode = mode === "auto" ? "auto" : "queue";
+      s.quickMode = false;
+      s.quickCurrentSlot = null;
       if (s.mode === "auto") {
-        // Auto Mode is a radio: ignore the manual queue and discover related tracks.
         s.queue = [];
         if (s.player && !s.current) await playNext(id);
       }
       return s.mode;
     },
     getMode(id) { return get(id).mode; },
+    async addQuick(id, channel, slot, query, textChannelId) {
+      const s = get(id);
+      const n = Number(slot);
+      if (!Number.isInteger(n) || n < 1 || n > 10) throw new Error("Quick Slot অবশ্যই 1 থেকে 10-এর মধ্যে হতে হবে।");
+      if (s.quickSlots[n]) throw new Error("Quick Slot " + n + " আগে থেকেই ভর্তি। অন্য Slot বেছে নাও অথবা আগে remove করো।");
+      await join(id, channel);
+      if (textChannelId) s.textChannelId = textChannelId;
+      const tracks = await resolve(query, s.player.node);
+      if (!tracks.length) throw new Error("এই গানটি পাওয়া যায়নি। অন্য নাম বা লিংক দিয়ে চেষ্টা করো।");
+      s.quickSlots[n] = tracks[0];
+      return { slot: n, track: tracks[0], count: Object.keys(s.quickSlots).length };
+    },
+    async removeQuick(id, slot) {
+      const s = get(id), n = Number(slot);
+      if (!s.quickSlots[n]) return null;
+      const removed = s.quickSlots[n];
+      delete s.quickSlots[n];
+      if (s.quickMode && s.quickCurrentSlot === n) {
+        s.quickMode = false;
+        s.quickCurrentSlot = null;
+        if (s.player && s.current) { await s.player.stopTrack(); s.current = null; }
+      }
+      return { slot: n, info: removed.info };
+    },
+    clearQuick(id) {
+      const s = get(id), count = Object.keys(s.quickSlots).length;
+      s.quickSlots = {};
+      s.quickMode = false;
+      s.quickCurrentSlot = null;
+      return count;
+    },
+    getQuickSlots(id) {
+      const s = get(id);
+      return Object.keys(s.quickSlots).map(Number).sort((a,b)=>a-b).map(slot => ({ slot, info: s.quickSlots[slot].info }));
+    },
+    exportQuickSlots() {
+      const out = {};
+      for (const [guildId, s] of states) {
+        const slots = {};
+        for (const [slot, track] of Object.entries(s.quickSlots || {})) {
+          if (track?.encoded) slots[slot] = { encoded: track.encoded, info: track.info || {} };
+        }
+        if (Object.keys(slots).length) out[guildId] = slots;
+      }
+      return out;
+    },
+    loadQuickSlots(saved = {}) {
+      for (const [guildId, slots] of Object.entries(saved || {})) {
+        const s = get(guildId);
+        s.quickSlots = {};
+        for (const [slot, track] of Object.entries(slots || {})) {
+          const n = Number(slot);
+          if (Number.isInteger(n) && n >= 1 && n <= 10 && track?.encoded) s.quickSlots[n] = track;
+        }
+      }
+    },
+    async setQuickMode(id, enabled) {
+      const s = get(id);
+      if (!enabled) {
+        s.quickMode = false;
+        s.quickCurrentSlot = null;
+        return false;
+      }
+      const slots = Object.keys(s.quickSlots).map(Number).sort((a,b)=>a-b);
+      if (!slots.length) throw new Error("Quick List খালি। আগে /quick add দিয়ে গান যোগ করো।");
+      if (!s.player) throw new Error("আগে voice channel-এ যোগ দাও।");
+      s.mode = "queue";
+      s.quickMode = true;
+      s.quickCurrentSlot = slots[0];
+      s.queue = [s.quickSlots[slots[0]]];
+      if (s.current) await s.player.stopTrack();
+      s.current = null;
+      await playNext(id);
+      return true;
+    },
+    async playQuick(id, channel, slot, textChannelId) {
+      const s = get(id), n = Number(slot);
+      if (!s.quickSlots[n]) throw new Error("Quick Slot " + n + " খালি। আগে /quick add দিয়ে গান রাখো।");
+      await join(id, channel);
+      if (textChannelId) s.textChannelId = textChannelId;
+      s.mode = "queue";
+      s.quickMode = true;
+      s.quickCurrentSlot = n;
+      s.queue = [s.quickSlots[n]];
+      if (s.current) await s.player.stopTrack();
+      s.current = null;
+      await playNext(id);
+      return { slot: n, track: s.quickSlots[n] };
+    },
     async randomNext(id) {
       const s = get(id);
       if (!s.player) return false;
@@ -537,7 +644,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     },
     getQueue(id) {
       const s = get(id);
-      return { current: s.current?.info || null, tracks: s.queue.map(t => t.info), mode: s.mode, repeat: s.repeat, volume: s.volume, muted: s.muted, paused: s.paused, node: s.player?.node?.name || "Disconnected", connected: Boolean(s.player), history: s.history.map(t => t.info) };
+      return { current: s.current?.info || null, tracks: s.queue.map(t => t.info), mode: s.mode, quickMode: s.quickMode, quickCurrentSlot: s.quickCurrentSlot, quickSlots: Object.keys(s.quickSlots).length, repeat: s.repeat, volume: s.volume, muted: s.muted, paused: s.paused, node: s.player?.node?.name || "Disconnected", connected: Boolean(s.player), history: s.history.map(t => t.info) };
     }
   };
 }

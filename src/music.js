@@ -322,7 +322,8 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
         // Radio mode plays the requested track first, then discovers related tracks itself.
         s.queue = [tracks[0]];
       } else {
-        s.queue.push(tracks[0], ...tracks.slice(1, 4));
+        // One /play request adds one selected track; users control the rest of the queue.
+        s.queue.push(tracks[0]);
       }
       if (wasIdle) await playNext(id);
       return { track: tracks[0], queued: !wasIdle, queueLength: s.queue.length };

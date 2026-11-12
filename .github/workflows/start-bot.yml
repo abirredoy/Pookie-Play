@@ -43,6 +43,10 @@ jobs:
           echo "LAVALINK_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
           echo "LAVALINK_HOST=127.0.0.1:2333" >> "$GITHUB_ENV"
           echo "LAVALINK_SECURE=false" >> "$GITHUB_ENV"
+          export LAVALINK_SERVER_PASSWORD="$PASSWORD"
+          export LAVALINK_PASSWORD="$PASSWORD"
+          export LAVALINK_HOST="127.0.0.1:2333"
+          export LAVALINK_SECURE="false"
           nohup java -jar Lavalink.jar > lavalink.log 2>&1 &
           echo $! > lavalink.pid
           echo "Waiting for private Lavalink to become ready..."

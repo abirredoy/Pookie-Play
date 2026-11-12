@@ -141,7 +141,7 @@ client.on("interactionCreate", async interaction => {
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play — Help")
         .setDescription("শুধু লিংক দাও। বট একই লিংক থেকে playable audio চালানোর চেষ্টা করবে; গানের নাম দিয়ে search করে না।")
         .addFields(
-          { name: "Music", value: "/play query — গান চালাও\n/queue — Queue দেখো\n/join /leave — Voice control", inline: false },
+          { name: "Music", value: "/play query — public media link দাও (গানের নাম নয়)\n/queue — Queue দেখো\n/join /leave — Voice control", inline: false },
           { name: "Controls", value: "/pause /resume /skip /stop /volume value এবং Player buttons", inline: false }
         ).setFooter({ text: "YouTube playback may still be limited by YouTube availability or regional restrictions." });
       return interaction.reply({ embeds: [embed], ephemeral: true });

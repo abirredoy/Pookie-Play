@@ -150,17 +150,43 @@ function hasControlPermission(interaction) {
 }
 
 function controlRows() {
+  const button = (id, label, style = ButtonStyle.Secondary) =>
+    new ButtonBuilder().setCustomId("pookie_" + id).setLabel(label).setStyle(style);
   return [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("pookie_previous").setLabel("Previous").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("pookie_pause").setLabel("Pause").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("pookie_resume").setLabel("Resume").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId("pookie_skip").setLabel("Next").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId("pookie_stop").setLabel("Stop").setStyle(ButtonStyle.Danger)
+      button("previous", "⏮️ Previous"),
+      button("pause", "⏸️ Pause"),
+      button("resume", "▶️ Resume", ButtonStyle.Success),
+      button("skip", "⏭️ Next", ButtonStyle.Primary),
+      button("stop", "⏹️ Stop", ButtonStyle.Danger)
     ),
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("pookie_volume_down").setLabel("Volume -").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("pookie_volume_up").setLabel("Volume +").setStyle(ButtonStyle.Secondary)
+      button("volume_down", "🔉 Volume −"),
+      button("volume_up", "🔊 Volume +"),
+      button("mute", "🔇 Mute"),
+      button("shuffle", "🔀 Shuffle"),
+      button("clearqueue", "🧹 Clear Queue", ButtonStyle.Danger)
+    ),
+    new ActionRowBuilder().addComponents(
+      button("repeat_off", "➡️ Repeat Off"),
+      button("repeat_track", "🔂 Repeat Song"),
+      button("repeat_queue", "🔁 Repeat Queue"),
+      button("autoplay", "🤖 AutoPlay", ButtonStyle.Success),
+      button("autoplay_mode", "🎚️ Auto Mode")
+    ),
+    new ActionRowBuilder().addComponents(
+      button("seek_back", "⏪ −10 sec"),
+      button("seek_forward", "⏩ +10 sec"),
+      button("restart", "🔄 Restart"),
+      button("nowplaying", "🎵 Now Playing", ButtonStyle.Primary),
+      button("queue", "📜 Queue", ButtonStyle.Primary)
+    ),
+    new ActionRowBuilder().addComponents(
+      button("vol25", "🔈 25%"),
+      button("vol50", "🔉 50%"),
+      button("vol75", "🔊 75%"),
+      button("vol100", "📢 100%"),
+      button("leave", "👋 Leave VC", ButtonStyle.Danger)
     )
   ];
 }
@@ -192,34 +218,74 @@ client.on("interactionCreate", async interaction => {
       if (!hasControlPermission(interaction)) {
         return interaction.reply({ content: "⛔ Pookie Play নিয়ন্ত্রণ করার অনুমতি তোমার নেই। নির্ধারিত Role লাগবে।", ephemeral: true });
       }
-      if (interaction.customId === "pookie_volume_down" || interaction.customId === "pookie_volume_up") {
-        const value = await music.adjustVolume(interaction.guildId, interaction.customId === "pookie_volume_up" ? 10 : -10);
-        const embed = interaction.message.embeds[0]
-          ? EmbedBuilder.from(interaction.message.embeds[0])
-          : new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play Player");
-        return interaction.update({
-          embeds: [embed.setFooter({ text: "Volume: " + value + "%" })],
-          components: controlRows()
-        });
+      const id = interaction.customId.replace("pookie_", "");
+      const data = music.getQueue(interaction.guildId);
+      const simpleActions = {
+        previous: () => music.previous(interaction.guildId),
+        pause: () => music.pause(interaction.guildId),
+        resume: () => music.resume(interaction.guildId),
+        skip: () => music.skip(interaction.guildId),
+        stop: () => music.stop(interaction.guildId),
+        volume_down: () => music.adjustVolume(interaction.guildId, -10),
+        volume_up: () => music.adjustVolume(interaction.guildId, 10),
+        mute: () => music.toggleMute(interaction.guildId),
+        shuffle: () => music.shuffle(interaction.guildId),
+        clearqueue: () => music.clearQueue(interaction.guildId),
+        repeat_off: () => music.setRepeat(interaction.guildId, "off"),
+        repeat_track: () => music.setRepeat(interaction.guildId, "track"),
+        repeat_queue: () => music.setRepeat(interaction.guildId, "queue"),
+        autoplay: () => music.setMode(interaction.guildId, data.mode === "off" ? "mixed" : "off"),
+        autoplay_mode: () => music.cycleMode(interaction.guildId),
+        seek_back: () => music.seekRelative(interaction.guildId, -10000),
+        seek_forward: () => music.seekRelative(interaction.guildId, 10000),
+        restart: () => music.seek(interaction.guildId, 0),
+        vol25: () => music.volume(interaction.guildId, 25),
+        vol50: () => music.volume(interaction.guildId, 50),
+        vol75: () => music.volume(interaction.guildId, 75),
+        vol100: () => music.volume(interaction.guildId, 100),
+        leave: () => music.leave(interaction.guildId)
+      };
+      if (id === "queue" || id === "nowplaying") {
+        const q = music.getQueue(interaction.guildId);
+        const current = q.current ? "**🎶 চলছে:** " + q.current.title : "এখন কোনো গান চলছে না।";
+        const upcoming = q.tracks.slice(0, 15).map((t, i) => (i + 1) + ". " + t.title).join("\\n");
+        const embed = new EmbedBuilder().setColor(0x5865f2)
+          .setTitle(id === "queue" ? "📜 Pookie Play Queue" : "🎵 Now Playing")
+          .setDescription(current + (upcoming ? "\\n\\n**⏭️ পরের গান:**\\n" + upcoming : "\\n\\nQueue খালি।"))
+          .setFooter({ text: "🔁 Repeat: " + q.repeat + " • 🤖 AutoPlay: " + q.mode + " • 🔊 Volume: " + q.volume + "%" });
+        return interaction.reply({ embeds: [embed], ephemeral: true });
       }
-      const actions = {
-        pookie_previous: () => music.previous(interaction.guildId),
-        pookie_pause: () => music.pause(interaction.guildId),
-        pookie_resume: () => music.resume(interaction.guildId),
-        pookie_skip: () => music.skip(interaction.guildId),
-        pookie_stop: () => music.stop(interaction.guildId)
-      };
-      const action = actions[interaction.customId];
+      const action = simpleActions[id];
       if (!action) return;
-      const ok = await action();
-      const messages = {
-        pookie_previous: "⏮️ আগের গান চালানো হয়েছে।",
-        pookie_pause: "⏸️ গান pause করা হয়েছে।",
-        pookie_resume: "▶️ গান resume করা হয়েছে।",
-        pookie_skip: "⏭️ পরের গান চালানোর চেষ্টা করছি।",
-        pookie_stop: "⏹️ গান ও queue বন্ধ করা হয়েছে।"
+      const result = await action();
+      const labels = {
+        previous: "⏮️ আগের গান চালানোর চেষ্টা করা হয়েছে।",
+        pause: "⏸️ Pause করা হয়েছে।",
+        resume: "▶️ Resume করা হয়েছে।",
+        skip: "⏭️ পরের গান চালানোর চেষ্টা করা হয়েছে।",
+        stop: "⏹️ Playback বন্ধ করা হয়েছে।",
+        volume_down: "🔉 Volume কমানো হয়েছে।",
+        volume_up: "🔊 Volume বাড়ানো হয়েছে।",
+        mute: result?.muted ? "🔇 Mute করা হয়েছে।" : "🔊 Unmute করা হয়েছে।",
+        shuffle: "🔀 Queue shuffle করা হয়েছে।",
+        clearqueue: "🧹 Upcoming queue পরিষ্কার করা হয়েছে।",
+        repeat_off: "➡️ Repeat বন্ধ।",
+        repeat_track: "🔂 বর্তমান গান repeat হবে।",
+        repeat_queue: "🔁 পুরো queue repeat হবে।",
+        autoplay: result === "off" ? "🤖 AutoPlay বন্ধ।" : "🤖 AutoPlay চালু।",
+        autoplay_mode: "🎚️ AutoPlay mode: " + result,
+        seek_back: "⏪ ১০ সেকেন্ড পেছনে নেওয়া হয়েছে।",
+        seek_forward: "⏩ ১০ সেকেন্ড সামনে নেওয়া হয়েছে।",
+        restart: "🔄 গানটি শুরু থেকে চালানো হচ্ছে।",
+        vol25: "🔈 Volume 25%।",
+        vol50: "🔉 Volume 50%।",
+        vol75: "🔊 Volume 75%।",
+        vol100: "📢 Volume 100%।",
+        leave: "👋 Voice channel ছেড়ে দেওয়া হয়েছে।"
       };
-      return interaction.reply({ content: ok ? messages[interaction.customId] : "এখন কোনো গান চলছে না।", ephemeral: true });
+      const success = ["shuffle", "clearqueue", "repeat_off", "repeat_track", "repeat_queue", "autoplay", "autoplay_mode", "volume_down", "volume_up", "mute", "vol25", "vol50", "vol75", "vol100", "leave"].includes(id)
+        ? true : result !== false;
+      return interaction.reply({ content: success ? (labels[id] || "✅ সম্পন্ন হয়েছে।") : "এখন এই কাজটি করা যাচ্ছে না।", ephemeral: true });
     }
 
     if (!interaction.isChatInputCommand()) return;

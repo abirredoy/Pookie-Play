@@ -48,7 +48,7 @@ function createMusic(shoukaku) {
       console.error("[Music] No Lavalink node available for search.");
       return [];
     }
-    if (/^https?:\\/\\//i.test(query)) {
+    if (/^https?:\/\//i.test(query)) {
       const direct = await tryResolve(query, node);
       if (direct.length) return direct;
     }

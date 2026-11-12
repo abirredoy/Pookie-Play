@@ -426,6 +426,16 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       const skipped = s.current;
       s.history.unshift(skipped);
       s.history = s.history.slice(0, 25);
+      if (s.quickMode) {
+        const slots = Object.keys(s.quickSlots).map(Number).sort((a,b)=>a-b);
+        const next = slots.find(n => n > Number(s.quickCurrentSlot || 0)) ?? (s.repeat === "queue" ? slots[0] : null);
+        await s.player.stopTrack();
+        s.current = null;
+        if (!next) { s.quickMode = false; s.quickCurrentSlot = null; s.queue = []; return false; }
+        s.quickCurrentSlot = next;
+        s.queue = [s.quickSlots[next]];
+        return playNext(id);
+      }
       if (s.mode === "auto") {
         s.lastPlayed = skipped;
         s.queue = [];
@@ -451,6 +461,8 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       s.queue = [];
       s.current = null;
       s.repeat = "off";
+      s.quickMode = false;
+      s.quickCurrentSlot = null;
       await s.player.stopTrack();
       return true;
     },

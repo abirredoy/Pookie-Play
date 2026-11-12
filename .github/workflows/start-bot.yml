@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: pookie-play-bot
@@ -39,6 +39,7 @@ jobs:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           GUILD_ID: ${{ secrets.GUILD_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           if [ -z "$DISCORD_TOKEN" ] || [ -z "$CLIENT_ID" ]; then
             echo "Missing repository secrets: DISCORD_TOKEN and/or CLIENT_ID"

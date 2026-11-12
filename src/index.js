@@ -54,9 +54,13 @@ const commands = [
   new SlashCommandBuilder().setName("stop").setDescription("Stop playback and clear the queue"),
   new SlashCommandBuilder().setName("volume").setDescription("Set volume")
     .addIntegerOption(o => o.setName("value").setDescription("0 to 100").setMinValue(0).setMaxValue(100).setRequired(true)),
-  new SlashCommandBuilder().setName("controlrole").setDescription("Choose the role allowed to control Pookie Play")
+  new SlashCommandBuilder().setName("controlroles").setDescription("Manage roles allowed to control Pookie Play")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addRoleOption(o => o.setName("role").setDescription("Role allowed to control the bot").setRequired(true)),
+    .addSubcommand(s => s.setName("show").setDescription("Show all control roles"))
+    .addSubcommand(s => s.setName("add").setDescription("Add a role allowed to control the bot")
+      .addRoleOption(o => o.setName("role").setDescription("Role to allow").setRequired(true)))
+    .addSubcommand(s => s.setName("remove").setDescription("Remove a role from bot control")
+      .addRoleOption(o => o.setName("role").setDescription("Role to remove").setRequired(true))),
   new SlashCommandBuilder().setName("start").setDescription("Show Pookie Play controls and Control Panel"),
   new SlashCommandBuilder().setName("help").setDescription("Show Pookie Play commands")
 ].map(command => command.toJSON());
@@ -151,7 +155,7 @@ async function loadControlRoles() {
   const repo = process.env.GITHUB_REPOSITORY;
   const token = process.env.GITHUB_TOKEN;
   if (!repo || !token) {
-    console.warn("[Permissions] GitHub persistence is unavailable; /controlrole cannot be saved.");
+    console.warn("[Permissions] GitHub persistence is unavailable; control roles cannot be saved.");
     return;
   }
   const url = "https://api.github.com/repos/" + repo + "/contents/data/control-roles.json";
@@ -162,11 +166,14 @@ async function loadControlRoles() {
   if (!response.ok) throw new Error("Could not load saved control roles from GitHub: HTTP " + response.status);
   const file = await response.json();
   const saved = JSON.parse(Buffer.from(file.content, "base64").toString("utf8"));
-  for (const [guildId, roleId] of Object.entries(saved)) controlRoles.set(guildId, roleId);
-  console.log("[Permissions] Loaded saved control roles:", controlRoles.size);
+  for (const [guildId, value] of Object.entries(saved)) {
+    const ids = Array.isArray(value) ? value : (typeof value === "string" && value ? [value] : []);
+    controlRoles.set(guildId, new Set(ids));
+  }
+  console.log("[Permissions] Loaded control roles for", controlRoles.size, "server(s).");
 }
 
-async function saveControlRole(guildId, roleId) {
+async function saveControlRoles(guildId, roleIds) {
   const repo = process.env.GITHUB_REPOSITORY;
   const token = process.env.GITHUB_TOKEN;
   if (!repo || !token) throw new Error("GitHub storage is not available. Start the bot through its GitHub Actions workflow.");
@@ -186,10 +193,10 @@ async function saveControlRole(guildId, roleId) {
   } else if (current.status !== 404) {
     throw new Error("Could not read role settings from GitHub: HTTP " + current.status);
   }
-  saved[guildId] = roleId;
+  saved[guildId] = roleIds;
   const body = {
-    message: "Save Pookie Play control role",
-    content: Buffer.from(JSON.stringify(saved, null, 2) + "\n").toString("base64"),
+    message: "Update Pookie Play control roles",
+    content: Buffer.from(JSON.stringify(saved, null, 2) + "\\n").toString("base64"),
     branch: process.env.GITHUB_REF_NAME || "main"
   };
   if (sha) body.sha = sha;
@@ -200,18 +207,19 @@ async function saveControlRole(guildId, roleId) {
   });
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error("Could not save control role to GitHub: HTTP " + response.status + " " + detail.slice(0, 300));
+    throw new Error("Could not save control roles to GitHub: HTTP " + response.status + " " + detail.slice(0, 300));
   }
-  controlRoles.set(guildId, roleId);
+  controlRoles.set(guildId, new Set(roleIds));
 }
 
 function hasControlPermission(interaction) {
   if (interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) return true;
-  const roleId = controlRoles.get(interaction.guildId);
-  if (!roleId) return true; // Until the owner configures a role, preserve current bot behavior.
+  if (interaction.guild?.ownerId && interaction.user?.id === interaction.guild.ownerId) return true;
+  const roleIds = controlRoles.get(interaction.guildId) || new Set();
+  if (!roleIds.size) return true;
   const memberRoles = interaction.member?.roles;
-  if (memberRoles?.cache) return memberRoles.cache.has(roleId);
-  return Array.isArray(memberRoles) && memberRoles.includes(roleId);
+  if (memberRoles?.cache) return [...roleIds].some(roleId => memberRoles.cache.has(roleId));
+  return Array.isArray(memberRoles) && memberRoles.some(roleId => roleIds.has(roleId));
 }
 
 function playerStatusFooter(q, status = "Ready") {
@@ -239,7 +247,9 @@ function controlRows(q = {}) {
   return [
     new ActionRowBuilder().addComponents(
       button("previous", "⏮️ Previous"),
+      button("seek_back", "⏪ -5s"),
       button(q.paused ? "resume" : "pause", q.paused ? "▶️ Play" : "⏸️ Pause", q.paused ? ButtonStyle.Success : ButtonStyle.Primary),
+      button("seek_forward", "⏩ +5s"),
       button("skip", "⏭️ Next", ButtonStyle.Primary)
     ),
     new ActionRowBuilder().addComponents(
@@ -339,6 +349,8 @@ client.on("interactionCreate", async interaction => {
         },
         leave: () => music.leave(interaction.guildId),
         previous: () => music.previous(interaction.guildId),
+        seek_back: () => music.seekRelative(interaction.guildId, -5000),
+        seek_forward: () => music.seekRelative(interaction.guildId, 5000),
         pause: () => music.pause(interaction.guildId),
         resume: () => music.resume(interaction.guildId),
         skip: () => music.skip(interaction.guildId),
@@ -381,7 +393,7 @@ client.on("interactionCreate", async interaction => {
         repeat_cycle: "Loop: " + ({off:"OFF",track:"SONG",queue:"LIST",shuffle:"MIX"}[result] || "OFF"),
         list_toggle: result ? "List: ON • playing saved List only" : "List: OFF • similar-track radio resumed",
         random_next: "Random track selected",
-        seek_back: "Seeked back 10 seconds", seek_forward: "Seeked forward 10 seconds",
+        seek_back: "৫ সেকেন্ড পিছনে নেওয়া হয়েছে", seek_forward: "৫ সেকেন্ড সামনে নেওয়া হয়েছে",
         restart: "Track restarted", vol25: "Volume: 25%", vol50: "Volume: 50%",
         vol75: "Volume: 75%", vol100: "Volume: 100%", leave: "Disconnected from voice channel"
       };
@@ -408,19 +420,39 @@ client.on("interactionCreate", async interaction => {
           { name: "Playback", value: "সাধারণ গান, Search result বা লিংক চালালে একই শিল্পী/ধরন/ভাষার গান নিজে থেকে খুঁজে চলবে। Player-এর List বাটন ON করলে শুধু সেভ করা List চলবে; OFF করলে Similar-track radio আবার চালু হবে।", inline: false },
           { name: "List tools", value: "/list add slot query — ১০টি List Slot-এ গান রাখো\n/list show /list remove /list clear\n/play list — নির্দিষ্ট List Slot থেকে চালাও\n/queue /shuffle /remove /move /clearqueue /repeat /seek /nowplaying", inline: false },
           { name: "Controls", value: "/pause /resume /skip /stop /volume value এবং Player buttons", inline: false },
-          { name: "Admin", value: "/controlrole role — কোন Role বট নিয়ন্ত্রণ করবে সেট করো (Administrator permission প্রয়োজন)", inline: false }
+          { name: "Admin", value: "/controlroles show — অনুমতিপ্রাপ্ত Role দেখো\\n/controlroles add role — Role যোগ করো\\n/controlroles remove role — Role সরাও (শুধু Administrator/Server Owner)", inline: false }
         ).setFooter({ text: "Sources: YouTube • YouTube Music • SoundCloud (যেটি পাওয়া যায়)।" });
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    if (name === "controlrole") {
-      if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-        return interaction.reply({ content: "⛔ শুধু Server Owner বা Administrator এই সেটিং বদলাতে পারবে।", ephemeral: true });
+    if (name === "controlroles") {
+      const isAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ||
+        (interaction.guild?.ownerId && interaction.user?.id === interaction.guild.ownerId);
+      const sub = interaction.options.getSubcommand();
+      if (sub !== "show" && !isAdmin) {
+        return interaction.reply({ content: "⛔ শুধু Server Owner বা Administrator Role তালিকা পরিবর্তন করতে পারবে।", ephemeral: true });
+      }
+      if (sub === "show") {
+        const ids = [...(controlRoles.get(interaction.guildId) || new Set())];
+        if (!ids.length) return interaction.reply({ content: "📋 এখনো কোনো Control Role সেট করা হয়নি। তালিকা ফাঁকা থাকলে আগের মতো সবাই বট কন্ট্রোল করতে পারবে।", ephemeral: true });
+        return interaction.reply({ content: "📋 **Pookie Play Control Role List**\\n" + ids.map((id, i) => (i + 1) + ". <@&" + id + ">").join("\\n"), ephemeral: true });
       }
       const role = interaction.options.getRole("role", true);
-      await interaction.deferReply({ ephemeral: true });
-      await saveControlRole(interaction.guildId, role.id);
-      return interaction.editReply("✅ " + role.toString() + " এখন Pookie Play নিয়ন্ত্রণ করতে পারবে। Role না থাকা সদস্যরা কমান্ড ও Player Button ব্যবহার করতে পারবে না।");
+      const ids = [...(controlRoles.get(interaction.guildId) || new Set())];
+      if (sub === "add") {
+        if (ids.includes(role.id)) return interaction.reply({ content: "ℹ️ " + role.toString() + " আগে থেকেই Control Role List-এ আছে।", ephemeral: true });
+        ids.push(role.id);
+        await interaction.deferReply({ ephemeral: true });
+        await saveControlRoles(interaction.guildId, ids);
+        return interaction.editReply("✅ " + role.toString() + " Control Role List-এ যোগ হয়েছে। এখন এই Role-এর সদস্যরা বট কন্ট্রোল করতে পারবে।");
+      }
+      if (sub === "remove") {
+        if (!ids.includes(role.id)) return interaction.reply({ content: "ℹ️ " + role.toString() + " Control Role List-এ নেই।", ephemeral: true });
+        const updated = ids.filter(id => id !== role.id);
+        await interaction.deferReply({ ephemeral: true });
+        await saveControlRoles(interaction.guildId, updated);
+        return interaction.editReply("🗑️ " + role.toString() + " Control Role List থেকে সরানো হয়েছে।");
+      }
     }
 
     if (!hasControlPermission(interaction)) {

@@ -83,10 +83,14 @@ function createMusic(shoukaku) {
   async function join(guildId, channel) {
     const s = get(guildId);
     if (s.player) {
-      if (s.player.connection.channelId !== channel.id) {
-        throw new Error("আমি ইতিমধ্যে অন্য voice channel-এ আছি।");
+      const connection = shoukaku.connections?.get(guildId);
+      const connectedChannelId = connection?.channelId;
+      if (connectedChannelId && connectedChannelId !== channel.id) {
+        throw new Error("আমি ইতিমধ্যে অন্য voice channel-এ আছি। আগে /leave ব্যবহার করো।");
       }
-      return s.player;
+      if (connection) return s.player;
+      // Recover if the local player exists but Shoukaku has lost its voice connection.
+      s.player = null;
     }
     const player = await shoukaku.joinVoiceChannel({
       guildId,

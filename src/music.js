@@ -75,50 +75,49 @@ function createMusic(shoukaku) {
     }
   }
 
-  async function linkMetadata(url) {
-    try {
-      let endpoint;
-      if (/open\.spotify\.com\/(track|album|playlist)\//i.test(url)) {
-        endpoint = "https://open.spotify.com/oembed?url=" + encodeURIComponent(url);
-      } else if (/(youtube\.com\/watch|youtu\.be\/)/i.test(url)) {
-        endpoint = "https://www.youtube.com/oembed?url=" + encodeURIComponent(url) + "&format=json";
-      } else return "";
-      const response = await fetch(endpoint, {
-        headers: { "User-Agent": "PookiePlay/1.0" },
-        signal: AbortSignal.timeout(8000)
-      });
-      if (!response.ok) return "";
-      const data = await response.json();
-      return [String(data.title || "").trim(), String(data.author_name || "").trim()]
-        .filter(Boolean).join(" ");
-    } catch (error) {
-      console.warn("[Music] Link metadata unavailable:", error?.message || error);
-      return "";
+  function normalizePublicLink(raw) {
+    let parsed;
+    try { parsed = new URL(String(raw).trim()); } catch { throw new Error("শুধু সঠিক ওয়েব লিংক দাও (https://...)।"); }
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) {
+      throw new Error("শুধু public HTTP/HTTPS লিংক সমর্থিত।");
     }
+    const host = parsed.hostname.toLowerCase().replace(/^www\\./, "");
+    if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") ||
+        /^(127\\.|10\\.|192\\.168\\.|169\\.254\\.|0\\.)/.test(host) ||
+        /^172\\.(1[6-9]|2[0-9]|3[0-1])\\./.test(host) || host === "::1") {
+      throw new Error("Private/local network link চালানো যাবে না।");
+    }
+
+    // Convert ordinary public Google Drive share links to its public download endpoint.
+    if (host === "drive.google.com") {
+      const match = parsed.pathname.match(/\\/file\\/d\\/([a-zA-Z0-9_-]+)/);
+      const id = match?.[1] || parsed.searchParams.get("id");
+      if (id) return "https://drive.google.com/uc?export=download&id=" + encodeURIComponent(id);
+    }
+    return parsed.toString();
   }
 
-  async function resolve(query, node) {
-    if (!node) {
-      console.error("[Music] No Lavalink node available for search.");
-      return [];
+  function isKnownMediaLink(raw) {
+    const u = new URL(raw);
+    const host = u.hostname.toLowerCase().replace(/^www\\./, "");
+    const knownHosts = [
+      "youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com",
+      "soundcloud.com", "on.soundcloud.com", "vimeo.com", "player.vimeo.com",
+      "twitch.tv", "clips.twitch.tv", "bandcamp.com", "drive.google.com",
+      "dropbox.com", "dl.dropboxusercontent.com", "archive.org", "streamable.com"
+    ];
+    const mediaPath = /\\.(mp3|m4a|aac|wav|flac|ogg|opus|mp4|m4v|webm|mov|mkv)(?:$|\\?)/i.test(u.pathname);
+    return knownHosts.some(domain => host === domain || host.endsWith("." + domain)) || mediaPath;
+  }
+
+  async function resolve(rawLink, node) {
+    if (!node) throw new Error("এখন কোনো Lavalink server সংযুক্ত নেই।");
+    const link = normalizePublicLink(rawLink);
+    if (!isKnownMediaLink(link)) {
+      throw new Error("এই ওয়েবসাইটের সাধারণ পেজ Voice Channel-এ সরাসরি বাজানো যায় না। Direct audio/video file বা YouTube/SoundCloud/Vimeo/Twitch/Bandcamp/Public Drive media link দাও।");
     }
-    let searchQuery = query;
-    if (/^https?:\/\//i.test(query)) {
-      const direct = await tryResolve(query, node);
-      if (direct.length) return direct;
-      searchQuery = await linkMetadata(query);
-      if (!searchQuery) {
-        console.warn("[Music] Could not read song details from supplied link.");
-        return [];
-      }
-      console.log("[Music] Resolved link metadata to:", searchQuery);
-    }
-    const yt = await tryResolve("ytsearch:" + searchQuery, node);
-    if (yt.length) return yt;
-    const ytm = await tryResolve("ytmsearch:" + searchQuery, node);
-    if (ytm.length) return ytm;
-    const sc = await tryResolve("scsearch:" + searchQuery, node);
-    return sc;
+    // Link-only: resolve the exact URL. Never search by title or substitute another track.
+    return await tryResolve(link, node);
   }
 
   async function playNext(guildId) {

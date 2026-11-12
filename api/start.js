@@ -1,4 +1,4 @@
-const { requireSession } = require("./_lib/auth");
+const { requireSession } = require("../lib/control-auth");
 const WORKFLOW = "start-bot.yml";
 const ACTIVE = new Set(["queued", "in_progress", "waiting", "requested", "pending"]);
 module.exports = async (req, res) => {

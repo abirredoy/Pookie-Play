@@ -15,16 +15,49 @@ function createMusic(shoukaku) {
     return states.get(id);
   };
 
-  async function resolve(query, node) {
-    const direct = /^https?:\/\//i.test(query);
-    if (direct) {
-      const result = await node.rest.resolve(query);
-      if (result?.tracks?.length) return result.tracks;
+  function extractTracks(result) {
+    if (!result) return [];
+    if (Array.isArray(result.tracks)) return result.tracks;
+    if (result.loadType === "search" && Array.isArray(result.data)) return result.data;
+    if (result.loadType === "track" && result.data) return [result.data];
+    if (result.loadType === "playlist" && Array.isArray(result.data?.tracks)) {
+      return result.data.tracks.map(item => item.track || item).filter(Boolean);
     }
-    const yt = await node.rest.resolve("ytsearch:" + query).catch(() => null);
-    if (yt?.tracks?.length) return yt.tracks;
-    const sc = await node.rest.resolve("scsearch:" + query).catch(() => null);
-    if (sc?.tracks?.length) return sc.tracks;
+    return [];
+  }
+
+  async function tryResolve(identifier, node) {
+    try {
+      const result = await node.rest.resolve(identifier);
+      const tracks = extractTracks(result);
+      console.log("[Music] Search", identifier.slice(0, 90),
+        "| loadType:", result?.loadType || "none",
+        "| tracks:", tracks.length,
+        "| responseKeys:", result ? Object.keys(result).join(",") : "empty");
+      return tracks;
+    } catch (error) {
+      console.error("[Music] Search failed:", identifier.slice(0, 90),
+        "|", error?.message || error,
+        "| status:", error?.status || error?.statusCode || "unknown");
+      return [];
+    }
+  }
+
+  async function resolve(query, node) {
+    if (!node) {
+      console.error("[Music] No Lavalink node available for search.");
+      return [];
+    }
+    if (/^https?:\\/\\//i.test(query)) {
+      const direct = await tryResolve(query, node);
+      if (direct.length) return direct;
+    }
+    const yt = await tryResolve("ytsearch:" + query, node);
+    if (yt.length) return yt;
+    const ytm = await tryResolve("ytmsearch:" + query, node);
+    if (ytm.length) return ytm;
+    const sc = await tryResolve("scsearch:" + query, node);
+    if (sc.length) return sc;
     return [];
   }
 

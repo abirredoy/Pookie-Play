@@ -460,7 +460,7 @@ client.on("interactionCreate", async interaction => {
           return (i+1) + ". " + (found ? found.info.title : "— খালি —");
         });
         const q = music.getQueue(interaction.guildId);
-        return interaction.reply("**🎵 Quick Queue (" + slots.length + "/10)**\n" + lines.join("\n") + "\nQuick Mode: " + (q.quickMode ? "ON" : "OFF"));
+        return interaction.reply("**🎵 Quick Queue (" + slots.length + "/10)**\n" + lines.map(line => line.slice(0, 140)).join("\n") + "\nQuick Mode: " + (q.quickMode ? "ON" : "OFF"));
       }
       if (sub === "clear") {
         const count = music.clearQuick(interaction.guildId);

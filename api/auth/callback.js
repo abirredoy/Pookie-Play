@@ -3,17 +3,23 @@ const { cookieMap, clearCookie, setCookie, issueSession, isAllowed } = require("
 module.exports = async (req, res) => {
   if (req.method !== "GET") return res.status(405).end();
   const cookies = cookieMap(req);
+  const wantsStart = cookies.pookie_start_intent === "1";
   const state = req.query.state;
   if (!state || !cookies.pookie_oauth_state || state !== cookies.pookie_oauth_state) {
     clearCookie(res, "pookie_oauth_state");
+    clearCookie(res, "pookie_start_intent");
     return res.redirect(302, "/control/?error=oauth_state");
   }
   clearCookie(res, "pookie_oauth_state");
+  clearCookie(res, "pookie_start_intent");
   if (req.query.error || !req.query.code) return res.redirect(302, "/control/?error=oauth_denied");
   const clientId = process.env.DISCORD_OAUTH_CLIENT_ID;
   const clientSecret = process.env.DISCORD_OAUTH_CLIENT_SECRET;
   const redirectUri = process.env.DISCORD_OAUTH_REDIRECT_URI;
-  if (!clientId || !clientSecret || !redirectUri) return res.status(500).send("Discord OAuth is not configured.");
+  if (!clientId || !clientSecret || !redirectUri) {
+    console.error("[OAuth] One or more Discord OAuth Production variables are missing.");
+    return res.status(500).send("Discord OAuth setup is incomplete. Check Production environment variables and redeploy.");
+  }
   try {
     const form = new URLSearchParams({
       client_id: clientId,
@@ -36,7 +42,7 @@ module.exports = async (req, res) => {
     const user = await userResponse.json();
     if (!isAllowed(user.id)) return res.redirect(302, "/control/?error=not_allowed");
     setCookie(res, "pookie_session", issueSession(user), 604800);
-    return res.redirect(302, "/control/");
+    return res.redirect(302, wantsStart ? "/control/?start=1" : "/control/");
   } catch (error) {
     console.error("[OAuth]", error.message);
     return res.redirect(302, "/control/?error=oauth_failed");

@@ -166,7 +166,7 @@ client.on("interactionCreate", async interaction => {
       const result = await music.play(interaction.guildId, channel, query);
       const info = result.track.info;
       const embed = new EmbedBuilder().setColor(0x5865f2)
-        .setTitle(result.queued ? "➕ Queue-তে যোগ হয়েছে" : "🎶 এখন বাজছে")
+        .setTitle(result.queued ? "➕ Queue-তে যোগ হয়েছে" : "🎵 চালানোর চেষ্টা করছি")
         .setDescription("**" + (info.title || query).slice(0, 240) + "**\n" + (info.author || "Unknown artist"))
         .addFields(
           { name: "Source", value: info.sourceName || "Audio source", inline: true },

@@ -248,10 +248,10 @@ client.on("interactionCreate", async interaction => {
       if (id === "queue" || id === "nowplaying") {
         const q = music.getQueue(interaction.guildId);
         const current = q.current ? "**🎶 চলছে:** " + q.current.title : "এখন কোনো গান চলছে না।";
-        const upcoming = q.tracks.slice(0, 15).map((t, i) => (i + 1) + ". " + t.title).join("\\n");
+        const upcoming = q.tracks.slice(0, 15).map((t, i) => (i + 1) + ". " + t.title).join("\n");
         const embed = new EmbedBuilder().setColor(0x5865f2)
           .setTitle(id === "queue" ? "📜 Pookie Play Queue" : "🎵 Now Playing")
-          .setDescription(current + (upcoming ? "\\n\\n**⏭️ পরের গান:**\\n" + upcoming : "\\n\\nQueue খালি।"))
+          .setDescription(current + (upcoming ? "\n\n**⏭️ পরের গান:**\n" + upcoming : "\n\nQueue খালি।"))
           .setFooter({ text: "🔁 Repeat: " + q.repeat + " • 🤖 AutoPlay: " + q.mode + " • 🔊 Volume: " + q.volume + "%" });
         return interaction.reply({ embeds: [embed], ephemeral: true });
       }
@@ -299,7 +299,7 @@ client.on("interactionCreate", async interaction => {
           { name: "Autoplay", value: "/mode viral | bangla | global | mixed | off\n/autoplay enabled:true|false", inline: false },
           { name: "Queue tools", value: "/shuffle /remove /move /clearqueue /repeat /seek /nowplaying", inline: false },
           { name: "Controls", value: "/pause /resume /skip /stop /volume value এবং Player buttons", inline: false },
-          { name: "Admin", value: "/controlrole role — কোন Role বট নিয়ন্ত্রণ করবে সেট করো (Manage Server permission প্রয়োজন)", inline: false }
+          { name: "Admin", value: "/controlrole role — কোন Role বট নিয়ন্ত্রণ করবে সেট করো (Administrator permission প্রয়োজন)", inline: false }
         ).setFooter({ text: "Sources: YouTube • YouTube Music • SoundCloud (যেটি পাওয়া যায়)।" });
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }

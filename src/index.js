@@ -1,7 +1,8 @@
 require("dotenv").config();
 const {
   Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder,
-  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle
+  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
+  ModalBuilder, TextInputBuilder, TextInputStyle
 } = require("discord.js");
 const express = require("express");
 const { Shoukaku, Connectors } = require("shoukaku");
@@ -78,6 +79,7 @@ function controlRows() {
     ),
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("pookie_volume_down").setLabel("Volume -").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("pookie_volume_set").setLabel("Set Volume 0–100").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("pookie_volume_up").setLabel("Volume +").setStyle(ButtonStyle.Secondary)
     )
   ];
@@ -103,8 +105,24 @@ client.once("ready", async () => {
 
 client.on("interactionCreate", async interaction => {
   try {
+    if (interaction.isModalSubmit() && interaction.customId === "pookie_volume_modal") {
+      if (!interaction.guildId) return;
+      const raw = interaction.fields.getTextInputValue("volume_value").trim();
+      if (!/^\\d{1,3}$/.test(raw) || Number(raw) < 0 || Number(raw) > 100) {
+        return interaction.reply({ content: "০ থেকে ১০০-এর মধ্যে সংখ্যা দাও।", ephemeral: true });
+      }
+      const value = await music.volume(interaction.guildId, Number(raw));
+      return interaction.reply({ content: "🔊 Volume সেট হয়েছে: " + value + "%", ephemeral: true });
+    }
+
     if (interaction.isButton()) {
       if (!interaction.guildId) return;
+      if (interaction.customId === "pookie_volume_set") {
+        const modal = new ModalBuilder().setCustomId("pookie_volume_modal").setTitle("Set Music Volume");
+        const field = new TextInputBuilder().setCustomId("volume_value").setLabel("Volume (0–100)").setStyle(TextInputStyle.Short).setPlaceholder("যেমন 37").setRequired(true).setMinLength(1).setMaxLength(3);
+        modal.addComponents(new ActionRowBuilder().addComponents(field));
+        return interaction.showModal(modal);
+      }
       if (interaction.customId === "pookie_volume_down" || interaction.customId === "pookie_volume_up") {
         const value = await music.adjustVolume(interaction.guildId, interaction.customId === "pookie_volume_up" ? 10 : -10);
         return interaction.reply({ content: "🔊 Volume: " + value + "%", ephemeral: true });

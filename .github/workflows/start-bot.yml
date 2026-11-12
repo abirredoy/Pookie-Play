@@ -18,13 +18,46 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Set up Java for Lavalink
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: npm
 
       - name: Install dependencies
         run: npm install
+
+      - name: Download and start private Lavalink
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --retry-delay 2 \
+            https://github.com/lavalink-devs/Lavalink/releases/latest/download/Lavalink.jar \
+            -o Lavalink.jar
+          PASSWORD="$(openssl rand -hex 24)"
+          echo "LAVALINK_SERVER_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
+          echo "LAVALINK_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
+          echo "LAVALINK_HOST=127.0.0.1:2333" >> "$GITHUB_ENV"
+          echo "LAVALINK_SECURE=false" >> "$GITHUB_ENV"
+          nohup java -jar Lavalink.jar > lavalink.log 2>&1 &
+          echo $! > lavalink.pid
+          echo "Waiting for private Lavalink to become ready..."
+          for i in {1..90}; do
+            if curl -fsS -u "default:$PASSWORD" http://127.0.0.1:2333/version >/dev/null; then
+              echo "Private Lavalink is ready."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Lavalink did not become ready. Recent server log:"
+          tail -n 100 lavalink.log
+          exit 1
 
       - name: Start Pookie Play
         env:

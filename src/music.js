@@ -126,6 +126,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       const track = s.queue.shift();
       if (!track) { s.current = null; return false; }
       s.current = track;
+      console.log("[Music] Using Lavalink node:", s.player.node?.name || "unknown");
       console.log("[Music] Starting:", track.info?.title || "untitled", "| source:", track.info?.sourceName || "unknown");
       await s.player.playTrack({ track: { encoded: track.encoded } });
       await s.player.setGlobalVolume(s.volume);

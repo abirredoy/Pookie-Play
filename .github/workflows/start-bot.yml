@@ -18,6 +18,38 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Set up Java for private Lavalink
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Start our own Lavalink server
+        env:
+          LAVALINK_SERVER_PASSWORD: PookieLocalNode_Only_2026_11
+        run: |
+          java -version
+          curl -fL --retry 3 --retry-delay 2 \
+            https://github.com/lavalink-devs/Lavalink/releases/download/4.2.2/Lavalink.jar \
+            -o Lavalink.jar
+          java -jar Lavalink.jar > lavalink.log 2>&1 &
+          echo $! > lavalink.pid
+          for i in {1..60}; do
+            if curl -fsS -H "Authorization: $LAVALINK_SERVER_PASSWORD" http://127.0.0.1:2333/version >/dev/null; then
+              echo "Private Lavalink is ready."
+              exit 0
+            fi
+            if ! kill -0 "$(cat lavalink.pid)" 2>/dev/null; then
+              echo "Lavalink stopped during startup."
+              cat lavalink.log
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "Lavalink did not become ready in time."
+          cat lavalink.log
+          exit 1
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -31,6 +63,9 @@ jobs:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           GUILD_ID: ${{ secrets.GUILD_ID }}
+          LAVALINK_HOST: "127.0.0.1:2333"
+          LAVALINK_PASSWORD: PookieLocalNode_Only_2026_11
+          LAVALINK_SECURE: "false"
         run: |
           if [ -z "$DISCORD_TOKEN" ] || [ -z "$CLIENT_ID" ]; then
             echo "Missing repository secrets: DISCORD_TOKEN and/or CLIENT_ID"

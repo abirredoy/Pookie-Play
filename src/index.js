@@ -22,8 +22,6 @@ const commands = [
   new SlashCommandBuilder().setName("play").setDescription("Play a song or a saved List Slot")
     .addStringOption(o => o.setName("query").setDescription("Song name or song link").setRequired(false))
     .addIntegerOption(o => o.setName("list").setDescription("Play saved List Slot 1-10").setMinValue(1).setMaxValue(10).setRequired(false)),
-  new SlashCommandBuilder().setName("add").setDescription("Add a song to List Mode without replacing the current track")
-    .addStringOption(o => o.setName("query").setDescription("Song name or song link").setRequired(true)),
   new SlashCommandBuilder().setName("list").setDescription("Manage your 10 saved List Queue slots")
     .addSubcommand(s => s.setName("add").setDescription("Save a song in a numbered slot")
       .addIntegerOption(o => o.setName("slot").setDescription("Slot number 1-10").setMinValue(1).setMaxValue(10).setRequired(true))
@@ -32,8 +30,7 @@ const commands = [
       .addIntegerOption(o => o.setName("slot").setDescription("Slot number 1-10").setMinValue(1).setMaxValue(10).setRequired(true)))
     .addSubcommand(s => s.setName("show").setDescription("Show saved List slots"))
     .addSubcommand(s => s.setName("clear").setDescription("Clear all 10 List Queue slots"))
-    .addSubcommand(s => s.setName("mode").setDescription("Turn serial List Mode on or off")
-      .addBooleanOption(o => o.setName("enabled").setDescription("Enable serial List Mode").setRequired(true))),
+
   new SlashCommandBuilder().setName("player").setDescription("Show music player controls"),
   new SlashCommandBuilder().setName("queue").setDescription("Show the music queue"),
   new SlashCommandBuilder().setName("nowplaying").setDescription("Show the current track"),
@@ -97,7 +94,7 @@ const music = createMusic(shoukaku, async (guildId, track, state) => {
       .setTitle("🎶 Now Playing")
       .setDescription("**" + String(info.title || "Unknown track").slice(0, 240) + "**\\n" + String(info.author || "Unknown artist").slice(0, 180));
     setPlayerStats(embed, q);
-    embed.setFooter({ text: "🤖 Auto Mode: " + (state.mode === "auto" ? "ON" : "OFF") + " • 📜 Queue Mode: " + (state.mode === "queue" ? "ON" : "OFF") + "\\n📍 Status: Player ready" });
+    embed.setFooter({ text: "📜 List: " + (state.listMode ? "ON" : "OFF") + " • 📻 Similar-track radio: " + (state.listMode ? "OFF" : "ON") + "\n📍 Status: Player ready" });
     if (info.uri) embed.setURL(info.uri);
     const message = await channel.send({ embeds: [embed], components: controlRows(q) });
     playerMessages.set(guildId, message);
@@ -218,15 +215,13 @@ function hasControlPermission(interaction) {
 }
 
 function playerStatusFooter(q, status = "Ready") {
-  const auto = q.mode === "auto" ? "ON" : "OFF";
-  const queue = q.mode === "queue" ? "ON" : "OFF";
   const repeat = q.repeat === "track" ? "Song" : q.repeat === "queue" ? "Queue" : "OFF";
-  return { text: "🤖 Auto Mode: " + auto + " • 📜 Queue Mode: " + queue + " • 🔟 List Mode: " + (q.listMode ? "ON" : "OFF") + " • Repeat: " + repeat + "\n📍 Status: " + String(status).slice(0, 130) };
+  return { text: "📜 List: " + (q.listMode ? "ON" : "OFF") + " • 📻 Similar-track radio: " + (q.listMode ? "OFF" : "ON") + " • Repeat: " + repeat + "\n📍 Status: " + String(status).slice(0, 130) };
 }
 
 function setPlayerStats(embed, q = {}) {
   const current = q.current || {};
-  const mode = q.listMode ? "List" : q.mode === "auto" ? "Auto" : "Queue";
+  const mode = q.listMode ? "List" : "Similar-track radio";
   embed.setFields(
     { name: "🎧 Source", value: String(current.sourceName || "Unknown"), inline: true },
     { name: "🔊 Volume", value: String(Number.isFinite(q.volume) ? q.volume : 100) + "%", inline: true },
@@ -257,8 +252,7 @@ function controlRows(q = {}) {
         q.repeat === "off" ? ButtonStyle.Secondary : ButtonStyle.Success)
     ),
     new ActionRowBuilder().addComponents(
-      button("auto_toggle", q.mode === "auto" ? "🤖 Auto Mode: ON" : "🤖 Auto Mode: OFF", q.mode === "auto" ? ButtonStyle.Success : ButtonStyle.Secondary),
-      button("list_toggle", q.listMode ? "📜 List Mode: ON" : "📜 List Mode: OFF", q.listMode ? ButtonStyle.Success : ButtonStyle.Secondary),
+      button("list_toggle", q.listMode ? "📜 List: ON" : "📜 List: OFF", q.listMode ? ButtonStyle.Success : ButtonStyle.Secondary),
       button("random_next", "🎲 Random Play", ButtonStyle.Primary)
     ),
     new ActionRowBuilder().addComponents(
@@ -355,7 +349,6 @@ client.on("interactionCreate", async interaction => {
           const current = order.indexOf(data.repeat || "off");
           return music.setRepeat(interaction.guildId, order[(current + 1) % order.length]);
         },
-        auto_toggle: () => music.setMode(interaction.guildId, data.mode === "auto" ? "queue" : "auto"),
         list_toggle: async () => (await music.setListMode(interaction.guildId, !data.listMode), !data.listMode),
         random_next: async () => {
           const channel = await requireVoice(interaction);
@@ -372,7 +365,7 @@ client.on("interactionCreate", async interaction => {
       let actionError = "";
       try {
         result = await action();
-        success = ["repeat_cycle", "auto_toggle", "list_toggle", "volume_down", "volume_up", "leave"].includes(id) ? true : result !== false;
+        success = ["repeat_cycle", "list_toggle", "volume_down", "volume_up", "leave"].includes(id) ? true : result !== false;
       } catch (error) {
         actionError = String(error?.message || error || "Unknown error");
         console.error("[Player button] Action failed:", id, error);
@@ -386,8 +379,7 @@ client.on("interactionCreate", async interaction => {
         mute: result?.muted ? "Mute: ON" : "Mute: OFF",
         shuffle: "Queue shuffled", clearqueue: "Upcoming queue cleared",
         repeat_cycle: "Loop: " + ({off:"OFF",track:"SONG",queue:"LIST",shuffle:"MIX"}[result] || "OFF"),
-        auto_toggle: result === "auto" ? "Auto Mode: ON" : "Auto Mode: OFF",
-        list_toggle: result ? "List Mode: ON" : "List Mode: OFF",
+        list_toggle: result ? "List: ON • playing saved List only" : "List: OFF • similar-track radio resumed",
         random_next: "Random track selected",
         seek_back: "Seeked back 10 seconds", seek_forward: "Seeked forward 10 seconds",
         restart: "Track restarted", vol25: "Volume: 25%", vol50: "Volume: 50%",
@@ -413,8 +405,8 @@ client.on("interactionCreate", async interaction => {
         .setDescription("YouTube, YouTube Music ও SoundCloud থেকে গান খুঁজে চালানোর চেষ্টা করবে।")
         .addFields(
           { name: "Music", value: "/search query — গান খুঁজে পছন্দেরটি চালাও\\n/play query — গান চালাও\n/queue — Queue দেখো\n/join /leave — Voice control", inline: false },
-          { name: "Playback modes", value: "/mode auto অথবা queue — Auto Mode ও List Mode একসঙ্গে চালু হবে না", inline: false },
-          { name: "Queue tools", value: "/add query — Queue Mode-এ গান যোগ করো\n/list add slot query — ১০টি List Slot-এ গান রাখো\n/list list /list remove /list clear /list mode\n/play list — List Slot নম্বর দিয়ে চালাও\n/queue /shuffle /remove /move /clearqueue /repeat /seek /nowplaying", inline: false },
+          { name: "Playback", value: "সাধারণ গান, Search result বা লিংক চালালে একই শিল্পী/ধরন/ভাষার গান নিজে থেকে খুঁজে চলবে। Player-এর List বাটন ON করলে শুধু সেভ করা List চলবে; OFF করলে Similar-track radio আবার চালু হবে।", inline: false },
+          { name: "List tools", value: "/list add slot query — ১০টি List Slot-এ গান রাখো\n/list show /list remove /list clear\n/play list — নির্দিষ্ট List Slot থেকে চালাও\n/queue /shuffle /remove /move /clearqueue /repeat /seek /nowplaying", inline: false },
           { name: "Controls", value: "/pause /resume /skip /stop /volume value এবং Player buttons", inline: false },
           { name: "Admin", value: "/controlrole role — কোন Role বট নিয়ন্ত্রণ করবে সেট করো (Administrator permission প্রয়োজন)", inline: false }
         ).setFooter({ text: "Sources: YouTube • YouTube Music • SoundCloud (যেটি পাওয়া যায়)।" });
@@ -524,19 +516,6 @@ client.on("interactionCreate", async interaction => {
       }
     }
 
-    if (name === "add") {
-      if (music.getMode(interaction.guildId) !== "queue") {
-        return interaction.reply({ content: "📻 আগে Queue Mode চালু করো: `/mode type:Queue Mode`। Auto Mode আলাদা radio system।", ephemeral: true });
-      }
-      const query = interaction.options.getString("query", true);
-      const channel = await requireVoice(interaction);
-      await interaction.deferReply();
-      const result = await music.add(interaction.guildId, channel, query, interaction.channelId);
-      return interaction.editReply(result.queued
-        ? "➕ **" + result.track.info.title + "** Queue-তে যোগ হয়েছে। আগের গান শেষ হলে এটি বাজবে।"
-        : "🎶 **" + result.track.info.title + "** Queue-তে যোগ করে চালু করা হচ্ছে।");
-    }
-
     if (name === "join") {
       const channel = await requireVoice(interaction);
       await interaction.deferReply();
@@ -556,7 +535,7 @@ client.on("interactionCreate", async interaction => {
       const upcoming = data.tracks.slice(0, 10).map((t, i) => (i + 1) + ". " + t.title).join("\n");
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎵 Pookie Play Queue")
         .setDescription(current + (upcoming ? "\n\n**পরের গানগুলো:**\n" + upcoming : "\n\nQueue খালি।"))
-        .setFooter({ text: "Auto Mode: " + (data.mode === "auto" ? "ON" : "OFF") + " • List Mode: " + (data.listMode ? "ON" : "OFF") + " • Repeat: " + data.repeat });
+        .setFooter({ text: "List: " + (data.listMode ? "ON" : "OFF") + " • Similar-track radio: " + (data.listMode ? "OFF" : "ON") + " • Repeat: " + data.repeat });
       return interaction.reply({ embeds: [embed] });
     }
 

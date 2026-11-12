@@ -53,9 +53,10 @@ const nodes = process.env.LAVALINK_HOST && process.env.LAVALINK_PASSWORD
     }]
   : [
       { name: "Nazha-SG1", url: "sg-1.nazha.online:443", auth: "https://discord.gg/XeSCnk57ZF", secure: true },
+      { name: "Nazha-SG2", url: "sg-2.nazha.online:443", auth: "https://discord.gg/XeSCnk57ZF", secure: true },
+      { name: "Nazha-SG3", url: "sg-3.nazha.online:443", auth: "https://discord.gg/XeSCnk57ZF", secure: true },
       { name: "Nazha-Global", url: "lavalink.nazha.online:443", auth: "nazhafreelava", secure: true },
-      { name: "Vinster", url: "freelavalinkvinster.in:443", auth: "youshallnotpass", secure: true },
-      { name: "G3V", url: "lava.g3v.co.uk:9008", auth: "lavalinklol", secure: false }
+      { name: "Vinster", url: "freelavalinkvinster.in:443", auth: "youshallnotpass", secure: true }
     ];
 const shoukaku = new Shoukaku(new Connectors.DiscordJS(client), nodes, {
   moveOnDisconnect: true,

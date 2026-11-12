@@ -33,7 +33,7 @@ function createMusic(shoukaku) {
       console.log("[Music] Search", identifier.slice(0, 90),
         "| loadType:", result?.loadType || "none",
         "| tracks:", tracks.length,
-        "| responseKeys:", result ? Object.keys(result).join(",") : "empty");
+        "| detail:", result?.data?.message || result?.data?.cause || result?.message || "none");
       return tracks;
     } catch (error) {
       console.error("[Music] Search failed:", identifier.slice(0, 90),
@@ -65,28 +65,32 @@ function createMusic(shoukaku) {
     const s = get(guildId);
     if (!s.player || s.busy) return false;
     s.busy = true;
+    let retry = false;
     try {
       if (!s.queue.length && s.mode !== "off") {
         const seeds = MODE_SEEDS[s.mode] || MODE_SEEDS.mixed;
         const query = seeds[s.seedIndex++ % seeds.length];
         s.currentQuery = query;
         const tracks = await resolve(query, s.player.node);
-        if (tracks.length) s.queue.push(tracks[0]);
+        if (tracks.length) s.queue.push(...tracks.slice(0, 5));
       }
       const track = s.queue.shift();
       if (!track) { s.current = null; return false; }
       s.current = track;
       s.fallbackTried = false;
+      console.log("[Music] Starting:", track.info?.title || "untitled", "| source:", track.info?.sourceName || "unknown");
       await s.player.playTrack({ track: { encoded: track.encoded } });
       await s.player.setGlobalVolume(s.volume * 10);
       return true;
     } catch (error) {
-      console.error("[Music] Next track failed:", error);
+      console.error("[Music] Could not start track; moving to next result:", error?.message || error);
       s.current = null;
-      return false;
+      retry = s.queue.length > 0;
     } finally {
       s.busy = false;
     }
+    if (retry) return playNext(guildId);
+    return false;
   }
 
   async function recoverTrack(guildId, detail, eventTrack) {
@@ -110,12 +114,13 @@ function createMusic(shoukaku) {
       if (failedTrack?.info?.sourceName === "youtube" && !s.fallbackTried) {
         s.fallbackTried = true;
         const info = failedTrack.info;
-        const fallbackQuery = String(info.title || "").replace(/\s*[|–—-]\s*(official\s*)?(music\s*)?(video|lyrics?|audio).*$/i, "").trim();
+        const rawTitle = String(info.title || "");
+        const fallbackQuery = rawTitle.split(/[|–—]/)[0].replace(/\s*\([^)]*\)\s*$/, "").trim();
         if (fallbackQuery) {
-          console.log("[Music] YouTube failed; trying SoundCloud title search:", fallbackQuery);
+          console.log("[Music] YouTube failed; trying clean SoundCloud title:", fallbackQuery);
           let fallbackTracks = await tryResolve("scsearch:" + fallbackQuery, s.player?.node);
           if (!fallbackTracks.length && info.author) {
-            fallbackTracks = await tryResolve("scsearch:" + fallbackQuery.split(/\s+/).slice(0, 7).join(" "), s.player?.node);
+            fallbackTracks = await tryResolve("scsearch:" + fallbackQuery + " " + info.author, s.player?.node);
           }
           const soundcloudTrack = fallbackTracks.find(track => track.info?.sourceName === "soundcloud") || fallbackTracks[0];
           if (soundcloudTrack) {
@@ -134,7 +139,11 @@ function createMusic(shoukaku) {
   }
 
   function attachEvents(guildId, player) {
+    player.on("start", event => {
+      console.log("[Music] Playback started:", event.track?.info?.title || "unknown track");
+    });
     player.on("end", event => {
+      console.log("[Music] Track ended:", event.reason);
       if (event.reason === "FINISHED") {
         const s = get(guildId);
         s.current = null;

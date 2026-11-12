@@ -67,8 +67,9 @@ jobs:
               allowDirectVideoIds: true
               allowDirectPlaylistIds: true
               clients:
-                - WEB
+                - MUSIC
                 - ANDROID_VR
+                - WEB
                 - WEBEMBEDDED
           EOF
 

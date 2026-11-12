@@ -142,6 +142,39 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     return false;
   }
 
+  function titleMatchScore(a, b) {
+    const clean = value => String(value || "").toLowerCase()
+      .replace(/\\[[^\\]]*\\]|\\([^)]*\\)/g, " ")
+      .replace(/[^\\p{L}\\p{N}]+/gu, " ")
+      .split(/\\s+/).filter(word => word.length > 1);
+    const left = new Set(clean(a));
+    const right = new Set(clean(b));
+    if (!left.size || !right.size) return 0;
+    let common = 0;
+    for (const word of left) if (right.has(word)) common++;
+    return common / Math.max(left.size, right.size);
+  }
+
+  async function findSoundCloudFallback(track, node) {
+    if (!track?.info || !node) return null;
+    const title = String(track.info.title || "").trim();
+    const author = String(track.info.author || "").trim();
+    if (!title) return null;
+    const query = "scsearch:" + title + (author ? " " + author : "");
+    const candidates = await tryResolve(query, node);
+    const ranked = candidates
+      .filter(candidate => candidate.info?.sourceName === "soundcloud")
+      .map(candidate => ({ candidate, score: titleMatchScore(title, candidate.info?.title) }))
+      .sort((a, b) => b.score - a.score);
+    const best = ranked[0];
+    if (!best || best.score < 0.60) {
+      console.warn("[Music] No sufficiently close SoundCloud match found for failed YouTube track:", title);
+      return null;
+    }
+    console.log("[Music] Found close SoundCloud fallback:", best.candidate.info.title, "| match:", best.score.toFixed(2));
+    return best.candidate;
+  }
+
   async function recoverTrack(guildId, detail, eventTrack) {
     const s = get(guildId);
     if (!s.current) {
@@ -159,9 +192,15 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     s.recovering = true;
     const failedTrack = s.current;
     console.error("[Music] Track failed:", detail || "unknown error");
+    let fallback = null;
     try {
-      console.warn("[Music] Skipping failed stream without switching to a different source/version.");
+      // GitHub-hosted runners can be blocked by YouTube's login/anti-bot checks.
+      // Try SoundCloud only when its title closely matches the failed YouTube track.
+      if (String(failedTrack?.info?.sourceName || "").toLowerCase() === "youtube") {
+        fallback = await findSoundCloudFallback(failedTrack, s.player?.node);
+      }
       s.current = null;
+      if (fallback) s.queue.unshift(fallback);
     } finally {
       s.recovering = false;
     }

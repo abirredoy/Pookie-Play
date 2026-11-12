@@ -409,12 +409,10 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     async setMode(id, mode) {
       const s = get(id);
       s.mode = mode === "auto" ? "auto" : "queue";
-      if (s.mode === "auto" && s.current) {
-        // Radio mode follows the current song, not queued search leftovers.
+      if (s.mode === "auto") {
+        // Auto Mode is a radio: ignore the manual queue and discover related tracks.
         s.queue = [];
-      }
-      if (s.mode === "auto" && s.player && !s.current && !s.queue.length) {
-        await playNext(id);
+        if (s.player && !s.current) await playNext(id);
       }
       return s.mode;
     },

@@ -75,6 +75,9 @@ function createMusic(shoukaku) {
       }
       console.log("[Music] Resolved link metadata to:", searchQuery);
     }
+    // Try YouTube first (primary music source), then SoundCloud as fallback.
+    const yt = await tryResolve("ytsearch:" + searchQuery, node);
+    if (yt.length) return yt;
     const sc = await tryResolve("scsearch:" + searchQuery, node);
     if (sc.length) return sc;
     return [];

@@ -10,7 +10,7 @@ function createMusic(shoukaku) {
   const get = (id) => {
     if (!states.has(id)) states.set(id, {
       player: null, queue: [], current: null, currentQuery: "", fallbackTried: false, volume: 70,
-      mode: "off", seedIndex: 0, busy: false
+      mode: "off", seedIndex: 0, busy: false, recovering: false
     });
     return states.get(id);
   };
@@ -91,13 +91,34 @@ function createMusic(shoukaku) {
 
   async function recoverTrack(guildId, detail) {
     const s = get(guildId);
-    console.error("[Music] Track failed:", detail || "unknown error");
-    if (s.current?.info?.sourceName === "youtube" && !s.fallbackTried && s.currentQuery) {
-      s.fallbackTried = true;
-      const fallback = await s.player.node.rest.resolve("scsearch:" + s.currentQuery).catch(() => null);
-      if (fallback?.tracks?.length) s.queue.unshift(fallback.tracks[0]);
+    if (s.recovering) {
+      console.log("[Music] Ignoring duplicate track failure event.");
+      return;
     }
-    s.current = null;
+    s.recovering = true;
+    const failedTrack = s.current;
+    console.error("[Music] Track failed:", detail || "unknown error");
+    try {
+      if (failedTrack?.info?.sourceName === "youtube" && !s.fallbackTried) {
+        s.fallbackTried = true;
+        const info = failedTrack.info;
+        const fallbackQuery = [info.title, info.author].filter(Boolean).join(" ");
+        if (fallbackQuery) {
+          console.log("[Music] YouTube failed; trying SoundCloud with:", fallbackQuery);
+          const fallbackTracks = await tryResolve("scsearch:" + fallbackQuery, s.player?.node);
+          const soundcloudTrack = fallbackTracks.find(track => track.info?.sourceName === "soundcloud") || fallbackTracks[0];
+          if (soundcloudTrack) {
+            s.queue.unshift(soundcloudTrack);
+            console.log("[Music] SoundCloud fallback found:", soundcloudTrack.info?.title || "untitled");
+          } else {
+            console.warn("[Music] SoundCloud fallback found no track.");
+          }
+        }
+      }
+      s.current = null;
+    } finally {
+      s.recovering = false;
+    }
     await playNext(guildId);
   }
 

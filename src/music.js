@@ -104,23 +104,49 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     if (bc.length) return bc;
     return [];
   }
+  async function findAutoplayTrack(s, similarTo = null) {
+    if (!s.player?.node) return null;
+    const recent = new Set([s.current, s.lastPlayed, ...s.history.slice(0, 8)]
+      .map(t => String(t?.info?.title || "").toLowerCase()).filter(Boolean));
+    const info = similarTo?.info || null;
+    const artist = String(info?.author || "").split(/[,&|]/)[0].trim();
+    const title = String(info?.title || "").trim();
+    const language = info ? languageHint(info) : "";
+    const queries = info
+      ? [
+          artist ? artist + " songs" : "",
+          "songs similar to " + title + (artist ? " " + artist : ""),
+          artist ? "artists similar to " + artist + " popular songs" : ""
+        ].filter(Boolean)
+      : [
+          "popular hit songs",
+          "trending pop music hits",
+          "popular Hindi songs",
+          "popular Bangla songs",
+          "popular English songs",
+          "popular K-pop songs"
+        ];
+    if (language && info) queries.unshift(language + " songs similar to " + title + " " + artist);
+    for (const query of queries) {
+      console.log("[AutoPlay] Searching:", query);
+      const tracks = await resolve(query, s.player.node);
+      const fresh = tracks.filter(t => {
+        const name = String(t.info?.title || "").toLowerCase();
+        return name && !recent.has(name);
+      });
+      if (fresh.length) return fresh[Math.floor(Math.random() * Math.min(fresh.length, 5))];
+    }
+    return null;
+  }
+
   async function playNext(guildId) {
     const s = get(guildId);
     if (!s.player || s.busy) return false;
     s.busy = true;
     let retry = false;
     try {
-      if (!s.queue.length && s.mode === "auto" && s.lastPlayed?.info) {
-        const info = s.lastPlayed.info;
-        const title = String(info.title || "").slice(0, 100);
-        const artist = String(info.author || "").slice(0, 80);
-        const language = languageHint(info);
-        const query = "songs similar to " + title + " " + artist + (language ? " " + language : "");
-        s.currentQuery = query;
-        console.log("[AutoPlay] Finding a similar track:", query);
-        const tracks = await resolve(query, s.player.node);
-        const recent = new Set([s.lastPlayed, ...s.history.slice(0, 5)].map(t => String(t?.info?.title || "").toLowerCase()));
-        const candidate = tracks.find(t => !recent.has(String(t.info?.title || "").toLowerCase()));
+      if (!s.queue.length && s.mode === "auto") {
+        const candidate = await findAutoplayTrack(s, s.lastPlayed || s.current);
         if (candidate) s.queue.push(candidate);
       }
       const track = s.queue.shift();
@@ -312,8 +338,13 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     async skip(id) {
       const s = get(id);
       if (!s.player || !s.current) return false;
-      s.history.unshift(s.current);
+      const skipped = s.current;
+      s.history.unshift(skipped);
       s.history = s.history.slice(0, 25);
+      if (s.mode === "auto") {
+        s.lastPlayed = skipped;
+        s.queue = [];
+      }
       await s.player.stopTrack();
       s.current = null;
       return playNext(id);
@@ -346,7 +377,9 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     },
     async adjustVolume(id, delta) {
       const s = get(id);
-      return this.volume(id, s.volume + delta);
+      const before = s.volume;
+      const after = await this.volume(id, before + delta);
+      return { before, after, volume: after };
     },
     async toggleMute(id) {
       const s = get(id);
@@ -367,9 +400,12 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
       const position = Number(s.player.position || 0);
       return this.seek(id, position + delta);
     },
-    setMode(id, mode) {
+    async setMode(id, mode) {
       const s = get(id);
       s.mode = mode === "auto" ? "auto" : "off";
+      if (s.mode === "auto" && s.player && !s.current && !s.queue.length) {
+        await playNext(id);
+      }
       return s.mode;
     },
     getMode(id) { return get(id).mode; },

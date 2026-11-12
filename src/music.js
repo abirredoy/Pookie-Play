@@ -297,7 +297,8 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
     });
     player.on("end", event => {
       console.log("[Music] Track ended:", event.reason);
-      if (event.reason === "FINISHED") {
+      const endReason = String(event.reason || "").toLowerCase();
+      if (endReason === "finished") {
         const s = get(guildId);
         const finished = s.current;
         if (finished) {

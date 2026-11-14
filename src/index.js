@@ -103,8 +103,19 @@ const music = createMusic(shoukaku, async (guildId, track, state) => {
       .setTitle("🎶 Now Playing")
       .setDescription("**" + String(info.title || "Unknown track").slice(0, 240) + "**\\n" + String(info.author || "Unknown artist").slice(0, 180));
     setPlayerStats(embed, q);
-    embed.setFooter({ text: "📜 List: " + (state.listMode ? "ON" : "OFF") + " • 📻 Similar-track radio: " + (state.listMode ? "OFF" : "ON") + "\n📍 Status: Player ready" });
+    embed.setFooter(playerStatusFooter(q, "Playback started"));
     if (info.uri) embed.setURL(info.uri);
+    const existing = playerMessages.get(guildId);
+    if (existing?.size) {
+      for (const message of [...existing]) {
+        try { await message.edit({ embeds: [embed], components: controlRows(q) }); }
+        catch (error) {
+          if (error?.code === 10008) existing.delete(message);
+          else console.warn("[Player card] Track refresh failed:", error?.message || error);
+        }
+      }
+      return;
+    }
     const message = await channel.send({ embeds: [embed], components: controlRows(q) });
     rememberPlayerMessage(guildId, message);
   } catch (error) {

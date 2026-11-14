@@ -545,11 +545,11 @@ client.on("interactionCreate", async interaction => {
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play — Help")
         .setDescription("Search and play music from YouTube, YouTube Music, and SoundCloud.")
         .addFields(
-          { name: "Music", value: "/search query — গান খুঁজে পছন্দেরটি চালাও\\n/play query — গান চালাও\n/queue — Queue দেখো\n/join /leave — Voice control", inline: false },
+          { name: "Music", value: "/search query — Search and play a selected track\\n/play query — Play a track\n/queue — View the queue\n/join /leave — Voice controls", inline: false },
           { name: "Playback", value: "When you play a track, Pookie Play automatically finds related music. Turn List ON to play only saved List slots; turn it OFF to resume similar-track radio.", inline: false },
-          { name: "List tools", value: "/list add slot query — ১০টি List Slot-এ গান রাখো\n/list show /list remove /list clear\n/play list — নির্দিষ্ট List Slot থেকে চালাও\n/queue /shuffle /remove /move /clearqueue /repeat /seek /nowplaying", inline: false },
+          { name: "List tools", value: "/list add slot query — Save a track in one of 10 slots\n/list show /list remove /list clear\n/play list — Play a saved List slot\n/queue /shuffle /remove /move /clearqueue /repeat /seek /nowplaying", inline: false },
           { name: "Controls", value: "/pause /resume /skip /stop /volume value and Player buttons", inline: false },
-          { name: "Admin", value: "/controlroles show — অনুমতিপ্রাপ্ত Role দেখো\n/controlroles add role — Role যোগ করো\n/controlroles remove role — Role সরাও (শুধু Administrator/Server Owner)", inline: false }
+          { name: "Admin", value: "/controlroles show — View allowed roles\n/controlroles add role — Add a control role\n/controlroles remove role — Remove a control role (Server Owner/Administrator only)", inline: false }
         ).setFooter({ text: "Sources: YouTube • YouTube Music • SoundCloud (when available)." });
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
@@ -569,18 +569,18 @@ client.on("interactionCreate", async interaction => {
       const role = interaction.options.getRole("role", true);
       const ids = [...(controlRoles.get(interaction.guildId) || new Set())];
       if (sub === "add") {
-        if (ids.includes(role.id)) return interaction.reply({ content: "ℹ️ " + role.toString() + " আগে থেকেই Control Role List-এ আছে।", ephemeral: true });
+        if (ids.includes(role.id)) return interaction.reply({ content: "ℹ️ " + role.toString() + " is already in the Control Role List.", ephemeral: true });
         ids.push(role.id);
         await interaction.deferReply({ ephemeral: true });
         await saveControlRoles(interaction.guildId, ids);
         return interaction.editReply("✅ " + role.toString() + " was added. Members with this role can now control Pookie Play.");
       }
       if (sub === "remove") {
-        if (!ids.includes(role.id)) return interaction.reply({ content: "ℹ️ " + role.toString() + " Control Role List-এ নেই।", ephemeral: true });
+        if (!ids.includes(role.id)) return interaction.reply({ content: "ℹ️ " + role.toString() + " is not in the Control Role List.", ephemeral: true });
         const updated = ids.filter(id => id !== role.id);
         await interaction.deferReply({ ephemeral: true });
         await saveControlRoles(interaction.guildId, updated);
-        return interaction.editReply("🗑️ " + role.toString() + " Control Role List থেকে সরানো হয়েছে।");
+        return interaction.editReply("🗑️ " + role.toString() + " was removed from the Control Role List.");
       }
     }
 
@@ -595,11 +595,11 @@ client.on("interactionCreate", async interaction => {
       await music.join(interaction.guildId, channel);
       music.setTextChannel(interaction.guildId, interaction.channelId);
       const tracks = await music.searchTracks(interaction.guildId, query);
-      if (!tracks.length) return interaction.editReply("🔎 **" + query + "**-এর কোনো গান পাওয়া যায়নি। অন্যভাবে লিখে চেষ্টা করো।");
+      if (!tracks.length) return interaction.editReply("🔎 No tracks found for **" + query + "**. Try a different search.");
       const results = tracks.slice(0, 5);
       searchResults.set(interaction.guildId, results);
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🔎 Search Results")
-        .setDescription("**" + query.slice(0, 150) + "** — নিচের বাটনে পছন্দের গানটি বেছে নাও।")
+        .setDescription("**" + query.slice(0, 150) + "** — Choose a track using the buttons below.")
         .addFields(results.map((track, i) => ({
           name: (i + 1) + ". " + String(track.info?.title || "Unknown track").slice(0, 180),
           value: String(track.info?.author || "Unknown artist").slice(0, 100) + (track.info?.uri ? "\\n" + track.info.uri : ""),
@@ -615,19 +615,19 @@ client.on("interactionCreate", async interaction => {
       const listSlot = interaction.options.getInteger("list");
       const query = interaction.options.getString("query");
       if ((listSlot === null) === (!query)) {
-        return interaction.reply({ content: "একটি বেছে নাও: গান চালাতে query দাও অথবা List Slot চালাতে list: 1-10 দাও।", ephemeral: true });
+        return interaction.reply({ content: "Choose one option: provide query to play a track, or list: 1-10 to play a saved List slot.", ephemeral: true });
       }
       const channel = await requireVoice(interaction);
       await interaction.deferReply();
       if (listSlot !== null) {
         const result = await music.playList(interaction.guildId, channel, listSlot, interaction.channelId);
-        return interaction.editReply("🎶 List Slot " + result.slot + " থেকে **" + result.track.info.title + "** চালু হচ্ছে। List Mode-এ পরের Slot-গুলোও সিরিয়াল অনুযায়ী বাজবে।");
+        return interaction.editReply("🎶 Playing **" + result.track.info.title + "** from List Slot " + result.slot + ". The remaining saved slots will play in order.");
       }
       const result = await music.play(interaction.guildId, channel, query, interaction.channelId);
       await refreshPlayerCards(interaction.guildId, result.queued ? "Track added to queue" : "Playback started");
       return interaction.editReply(result.queued
-        ? "➕ **" + result.track.info.title + "** Queue-তে যোগ হয়েছে। গান শুরু হলে নতুন Player card আসবে।"
-        : "🎶 **" + result.track.info.title + "** চালু হচ্ছে। নতুন Player card পাঠানো হচ্ছে।");
+        ? "➕ **" + result.track.info.title + "** was added to the queue."
+        : "🎶 Starting **" + result.track.info.title + "**. A Player card is being posted.");
     }
 
     if (name === "list") {
@@ -644,9 +644,9 @@ client.on("interactionCreate", async interaction => {
       if (sub === "remove") {
         const slot = interaction.options.getInteger("slot", true);
         const result = await music.removeList(interaction.guildId, slot);
-        if (!result) return interaction.reply({ content: "এই Slot খালি।", ephemeral: true });
+        if (!result) return interaction.reply({ content: "This slot is empty.", ephemeral: true });
         await persistListStorage();
-        return interaction.reply("🗑️ List Slot " + slot + " থেকে **" + result.info.title + "** সরানো হয়েছে।");
+        return interaction.reply("🗑️ Removed **" + result.info.title + "** from List Slot " + slot + ".");
       }
       if (sub === "show") {
         const slots = music.getListSlots(interaction.guildId);
@@ -660,21 +660,21 @@ client.on("interactionCreate", async interaction => {
       if (sub === "clear") {
         const count = music.clearList(interaction.guildId);
         await persistListStorage();
-        return interaction.reply("🧹 List Queue-এর " + count + "টি Slot খালি করা হয়েছে।");
+        return interaction.reply("🧹 Cleared " + count + " saved List slot(s).");
       }
       if (sub === "mode") {
         const enabled = interaction.options.getBoolean("enabled", true);
         if (enabled) await requireVoice(interaction);
         const channel = interaction.member?.voice?.channel;
-        if (enabled && !channel) throw new Error("List Mode চালাতে আগে voice channel-এ যোগ দাও।");
+        if (enabled && !channel) throw new Error("Join a voice channel before enabling List Mode.");
         if (enabled) {
           await music.join(interaction.guildId, channel);
           music.setTextChannel(interaction.guildId, interaction.channelId);
         }
         const active = await music.setListMode(interaction.guildId, enabled);
         return interaction.reply(active
-          ? "🔟 List Mode ON। Slot অনুযায়ী গান সিরিয়ালভাবে বাজবে। AutoPlay OFF।"
-          : "List Mode OFF। বর্তমান গান শেষ হলে আর List Slot নিজে থেকে চলবে না।");
+          ? "🔟 List Mode is ON. Saved slots will play in order. Similar-track radio is OFF."
+          : "List Mode is OFF. Saved List slots will no longer play automatically.");
       }
     }
 
@@ -683,19 +683,19 @@ client.on("interactionCreate", async interaction => {
       await interaction.deferReply();
       await music.join(interaction.guildId, channel);
       await refreshPlayerCards(interaction.guildId, "Connected to voice channel");
-      return interaction.editReply("🎧 Pookie Play voice channel-এ যোগ দিয়েছে।");
+      return interaction.editReply("🎧 Pookie Play joined your voice channel.");
     }
 
     if (name === "leave") {
       await music.leave(interaction.guildId);
       await refreshPlayerCards(interaction.guildId, "Disconnected from voice channel");
-      return interaction.reply("👋 Voice channel ছেড়েছি।");
+      return interaction.reply("👋 Pookie Play left the voice channel.");
     }
 
 
     if (name === "queue") {
       const data = music.getQueue(interaction.guildId);
-      const current = data.current ? "**Now Playing:** " + data.current.title : "এখন কিছু বাজছে না।";
+      const current = data.current ? "**Now Playing:** " + data.current.title : "Nothing is playing.";
       const upcoming = data.tracks.slice(0, 10).map((t, i) => (i + 1) + ". " + t.title).join("\n");
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎵 Pookie Play Queue")
         .setDescription(current + (upcoming ? "\n\n**পরের গানগুলো:**\n" + upcoming : "\n\nQueue খালি।"))
@@ -705,7 +705,7 @@ client.on("interactionCreate", async interaction => {
 
     if (name === "nowplaying") {
       const data = music.getQueue(interaction.guildId);
-      if (!data.current) return interaction.reply("এখন কোনো গান চলছে না।");
+      if (!data.current) return interaction.reply("Nothing is currently playing.");
       const info = data.current;
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎶 Now Playing")
         .setDescription("**" + info.title + "**\n" + (info.author || "Unknown artist"))
@@ -718,26 +718,26 @@ client.on("interactionCreate", async interaction => {
 
     if (name === "shuffle") {
       const count = music.shuffle(interaction.guildId);
-      return interaction.reply(count > 1 ? "🔀 Shuffled " + count + " upcoming track(s)." : "Shuffle করার মতো পর্যাপ্ত গান নেই।");
+      return interaction.reply(count > 1 ? "🔀 Shuffled " + count + " upcoming track(s)." : "There are not enough upcoming tracks to shuffle.");
     }
 
     if (name === "clearqueue") {
       const count = music.clearQueue(interaction.guildId);
-      return interaction.reply("🧹 Queue থেকে " + count + "টি upcoming গান সরানো হয়েছে। বর্তমান গান চলতে থাকবে।");
+      return interaction.reply("🧹 Removed " + count + " upcoming track(s). The current track will continue.");
     }
 
     if (name === "remove") {
       const position = interaction.options.getInteger("position", true);
       const removed = music.remove(interaction.guildId, position);
-      return interaction.reply(removed ? "➖ Removed: **" + removed.title + "**" : "ওই position-এ কোনো গান নেই।");
+      return interaction.reply(removed ? "➖ Removed: **" + removed.title + "**" : "No track exists at that queue position.");
     }
 
     if (name === "move") {
       const from = interaction.options.getInteger("from", true);
       const to = interaction.options.getInteger("to", true);
       return interaction.reply(music.move(interaction.guildId, from, to)
-        ? "↕️ Queue position পরিবর্তন করা হয়েছে।"
-        : "Position ভুল অথবা Queue-তে ওই গান নেই।");
+        ? "↕️ Queue position updated."
+        : "Invalid position or track not found in the queue.");
     }
 
     if (name === "repeat") {
@@ -749,14 +749,14 @@ client.on("interactionCreate", async interaction => {
     if (name === "seek") {
       const seconds = interaction.options.getInteger("seconds", true);
       const result = await music.seek(interaction.guildId, seconds * 1000);
-      return interaction.reply(result === false ? "এখন কোনো গান চলছে না।" : "⏩ " + seconds + " সেকেন্ডে নেওয়া হয়েছে।");
+      return interaction.reply(result === false ? "Nothing is currently playing." : "⏩ Seeked to " + seconds + " seconds.");
     }
 
     if (name === "start") {
       const data = music.getQueue(interaction.guildId);
       const title = data.current?.title || "No track is playing yet";
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play Control Panel")
-        .setDescription("**" + title + "**\\n/play কমান্ড দিয়ে গান চালাও। নিচের বাটনগুলো গান চলুক বা না চলুক এখানেই থাকবে।");
+        .setDescription("**" + title + "**\nUse /play to start music. Player controls remain available below.");
       setPlayerStats(embed, data);
       embed.setFooter(playerStatusFooter(data, data.current ? "Player ready" : "Waiting for /play"));
       await interaction.reply({ embeds: [embed], components: controlRows(data) });
@@ -778,7 +778,7 @@ client.on("interactionCreate", async interaction => {
       const ok = await music[name](interaction.guildId);
       await refreshPlayerCards(interaction.guildId, name === "stop" ? "Playback stopped" : (name === "pause" ? "Playback paused" : name === "resume" ? "Playback resumed" : "Track skipped"));
       const labels = { pause: "Pause", resume: "Resume", skip: "Skip", stop: "Stop" };
-      return interaction.reply(ok ? "✅ " + labels[name] + " সম্পন্ন হয়েছে।" : "এখন কোনো গান চলছে না।");
+      return interaction.reply(ok ? "✅ " + labels[name] + " সম্পন্ন হয়েছে।" : "Nothing is currently playing.");
     }
 
     if (name === "volume") {
@@ -789,7 +789,7 @@ client.on("interactionCreate", async interaction => {
     }
   } catch (error) {
     console.error("[Interaction]", error);
-    const message = error.message || "কমান্ডটি চালাতে সমস্যা হয়েছে।";
+    const message = error.message || "Something went wrong while running this command.";
     if (interaction.deferred || interaction.replied) await interaction.followUp({ content: message, ephemeral: true }).catch(() => {});
     else await interaction.reply({ content: message, ephemeral: true }).catch(() => {});
   }

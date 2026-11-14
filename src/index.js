@@ -595,11 +595,17 @@ client.once("ready", async () => {
   catch (error) { console.error("[Audio Nodes] Failed to load saved selection:", error); }
   const rest = new REST({ version: "10" }).setToken(token);
   try {
-    const route = process.env.GUILD_ID
-      ? Routes.applicationGuildCommands(clientId, process.env.GUILD_ID)
-      : Routes.applicationCommands(clientId);
-    await rest.put(route, { body: commands });
-    console.log("Slash commands registered.");
+    // Keep one canonical command scope (global). Remove guild-scoped copies
+    // from every server this bot is currently in to prevent duplicate slash commands.
+    await rest.put(Routes.applicationCommands(clientId), { body: commands });
+    const guildIds = [...client.guilds.cache.keys()];
+    const cleanup = await Promise.allSettled(guildIds.map(guildId =>
+      rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: [] })
+    ));
+    const removed = cleanup.filter(result => result.status === "fulfilled").length;
+    const failed = cleanup.length - removed;
+    console.log("[Commands] Global commands registered. Cleared guild-specific command sets:", removed + "/" + guildIds.length);
+    if (failed) console.warn("[Commands] Could not clear guild-specific commands for", failed, "server(s).");
   } catch (error) { console.error("Command registration failed:", error); }
 });
 

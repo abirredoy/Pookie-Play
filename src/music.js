@@ -13,7 +13,6 @@ function normalizeUserQuery(query) {
     bangla: "Bangla songs popular hits",
     "বাংলা": "Bangla songs popular hits",
     hindi: "Hindi songs popular hits",
-    hindi: "Hindi songs popular hits",
     global: "global international popular songs",
     worldwide: "global international popular songs",
     english: "English international songs",

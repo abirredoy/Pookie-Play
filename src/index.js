@@ -67,26 +67,171 @@ const commands = [
       .addRoleOption(o => o.setName("role").setDescription("Role to remove").setRequired(true))),
   new SlashCommandBuilder().setName("start").setDescription("Show Pookie Play controls and Control Panel"),
   new SlashCommandBuilder().setName("help").setDescription("Show Pookie Play commands")
+  ,new SlashCommandBuilder().setName("audionode").setDescription("Manage Pookie Play audio servers")
+    .addSubcommand(s => s.setName("list").setDescription("Show public audio nodes, status and ping"))
+    .addSubcommand(s => s.setName("use").setDescription("Select an audio node for new voice connections")
+      .addStringOption(o => o.setName("node").setDescription("Audio node name").setRequired(true).setAutocomplete(true)))
+    .addSubcommand(s => s.setName("auto").setDescription("Automatically choose the best available node"))
+    .addSubcommand(s => s.setName("refresh").setDescription("Refresh the public node directory and ping checks")),
 ].map(command => command.toJSON());
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
-// Pookie Play connects to CloudeWave's shared public Lavalink v4 node.
-// This node is community-shared and is intended for testing; availability is not guaranteed.
-if (!process.env.LAVALINK_HOST || !process.env.LAVALINK_PASSWORD) {
-  console.error("Missing private Lavalink configuration (LAVALINK_HOST / LAVALINK_PASSWORD).");
-  process.exit(1);
+
+// Audio Node Manager. Only Lavalink v4 nodes are admitted because this bot uses Shoukaku v4.
+const audioNodeConfigs = new Map();
+const audioNodeHealth = new Map();
+let selectedAudioNode = "auto";
+
+function addAudioNodeConfig(config) {
+  const host = String(config.host || "").trim();
+  const port = Number(config.port || 2333);
+  const auth = String(config.auth || "").trim();
+  if (!host || !auth || !Number.isInteger(port) || port < 1 || port > 65535) return null;
+  if (!/^[a-zA-Z0-9.:-]+$/.test(host) || /(^localhost$|\.local$)/i.test(host)) return null;
+  const ipv4 = host.split(".");
+  if (ipv4.length === 4 && ipv4.every(part => /^\d+$/.test(part))) {
+    const octets = ipv4.map(Number);
+    if (octets.some(n => n < 0 || n > 255) || octets[0] === 10 || octets[0] === 127 ||
+      octets[0] === 0 || (octets[0] === 169 && octets[1] === 254) ||
+      (octets[0] === 192 && octets[1] === 168) ||
+      (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)) return null;
+  }
+  const key = host.toLowerCase() + ":" + port;
+  if (audioNodeConfigs.has(key)) return audioNodeConfigs.get(key);
+  let name = String(config.name || "Public-Node").replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 60);
+  const usedNames = new Set([...audioNodeConfigs.values()].map(item => item.name));
+  const baseName = name;
+  let suffix = 2;
+  while (usedNames.has(name)) name = baseName.slice(0, 54) + "-" + suffix++;
+  const saved = { name, host, port, auth, secure: Boolean(config.secure), source: config.source || "Public directory" };
+  audioNodeConfigs.set(key, saved);
+  return saved;
 }
-const nodes = [{
-  name: "CloudeWave-Public",
-  url: process.env.LAVALINK_HOST,
-  auth: process.env.LAVALINK_PASSWORD,
-  secure: process.env.LAVALINK_SECURE === "true"
-}];
-const shoukaku = new Shoukaku(new Connectors.DiscordJS(client), nodes, {
+
+const configuredPublic = process.env.LAVALINK_HOST && process.env.LAVALINK_PASSWORD
+  ? addAudioNodeConfig({
+      name: "CloudeWave-Public",
+      host: process.env.LAVALINK_HOST,
+      port: Number(process.env.LAVALINK_PORT || 2336),
+      auth: process.env.LAVALINK_PASSWORD,
+      secure: process.env.LAVALINK_SECURE === "true",
+      source: "Existing bot configuration"
+    })
+  : null;
+
+if (!configuredPublic) {
+  addAudioNodeConfig({ name: "CloudeWave-Public", host: "lavalink.cloudewave.in", port: 2336, auth: "cloudewave.in", secure: false, source: "CloudeWave public node" });
+}
+addAudioNodeConfig({ name: "TriniumHost-V4", host: "lavalink.triniumhost.indevs.in", port: 4333, auth: "free", secure: false, source: "TriniumHost public node" });
+addAudioNodeConfig({ name: "TriniumHost-V4-SSL", host: "lavalink-v4.triniumhost.indevs.in", port: 443, auth: "free", secure: true, source: "TriniumHost public node" });
+
+if (process.env.PRIVATE_LAVALINK_HOST && process.env.PRIVATE_LAVALINK_PASSWORD) {
+  addAudioNodeConfig({
+    name: "Private-Lavalink",
+    host: process.env.PRIVATE_LAVALINK_HOST,
+    port: Number(process.env.PRIVATE_LAVALINK_PORT || 2333),
+    auth: process.env.PRIVATE_LAVALINK_PASSWORD,
+    secure: process.env.PRIVATE_LAVALINK_SECURE === "true",
+    source: "Private server"
+  });
+}
+
+function audioNodeScore(node) {
+  const ping = audioNodeHealth.get(node.name)?.ping;
+  const pingScore = Number.isFinite(ping) ? ping : 5000;
+  return pingScore + (Number(node.penalties) || 0) * 5;
+}
+
+const initialAudioNodes = [...audioNodeConfigs.values()].map(node => ({
+  name: node.name,
+  url: node.host + ":" + node.port,
+  auth: node.auth,
+  secure: node.secure
+}));
+
+const shoukaku = new Shoukaku(new Connectors.DiscordJS(client), initialAudioNodes, {
   moveOnDisconnect: true,
   reconnectTries: 5,
-  reconnectInterval: 5
+  reconnectInterval: 5,
+  nodeResolver: nodes => {
+    const available = [...nodes.values()].filter(node => node.state === 1);
+    if (!available.length) return undefined;
+    if (selectedAudioNode !== "auto") {
+      const chosen = available.find(node => node.name === selectedAudioNode);
+      if (chosen) return chosen;
+    }
+    return available.sort((a, b) => audioNodeScore(a) - audioNodeScore(b))[0];
+  }
 });
+
+async function checkAudioNode(nodeConfig) {
+  const protocol = nodeConfig.secure ? "https" : "http";
+  const started = Date.now();
+  try {
+    const response = await fetch(protocol + "://" + nodeConfig.host + ":" + nodeConfig.port + "/v4/info", {
+      headers: { Authorization: nodeConfig.auth, "User-Agent": "PookiePlay-AudioNodeManager/1.0" },
+      signal: AbortSignal.timeout(5000)
+    });
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    await response.body?.cancel().catch(() => {});
+    const ping = Date.now() - started;
+    audioNodeHealth.set(nodeConfig.name, { online: true, ping, checkedAt: Date.now(), error: null });
+    if (!shoukaku.nodes.has(nodeConfig.name)) {
+      shoukaku.addNode({
+        name: nodeConfig.name,
+        url: nodeConfig.host + ":" + nodeConfig.port,
+        auth: nodeConfig.auth,
+        secure: nodeConfig.secure
+      });
+    }
+    return true;
+  } catch (error) {
+    audioNodeHealth.set(nodeConfig.name, {
+      online: false, ping: null, checkedAt: Date.now(),
+      error: String(error?.message || error).slice(0, 90)
+    });
+    return false;
+  }
+}
+
+async function refreshAudioNodes(discover = false) {
+  if (discover) {
+    const directories = [
+      "https://raw.githubusercontent.com/Austayo/lavalink-list/main/nodes.json",
+      "https://raw.githubusercontent.com/stackryze/lavalink-list/main/nodes.json"
+    ];
+    const directoryResults = await Promise.allSettled(directories.map(async url => {
+      const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (!response.ok) throw new Error("Directory HTTP " + response.status);
+      const entries = await response.json();
+      if (!Array.isArray(entries)) return 0;
+      let added = 0;
+      for (const entry of entries) {
+        if (String(entry.restVersion || "").toLowerCase() !== "v4") continue;
+        const node = addAudioNodeConfig({
+          name: "Community-" + String(entry.identifier || entry.host || "Node"),
+          host: entry.host,
+          port: entry.port || 2333,
+          auth: entry.password,
+          secure: entry.secure,
+          source: "Community Lavalink directory"
+        });
+        if (node) added++;
+      }
+      return added;
+    }));
+    console.log("[Audio Nodes] Public directories checked:", directoryResults.map(result => result.status).join(", "));
+  }
+
+  const configs = [...audioNodeConfigs.values()];
+  for (let i = 0; i < configs.length; i += 6) {
+    await Promise.allSettled(configs.slice(i, i + 6).map(checkAudioNode));
+  }
+  const online = configs.filter(config => audioNodeHealth.get(config.name)?.online).length;
+  console.log("[Audio Nodes] Health check complete:", online + "/" + configs.length, "REST endpoints online.");
+  return { total: configs.length, online };
+}
+
 shoukaku.on("ready", name => console.log("[Lavalink] Connected:", name));
 shoukaku.on("error", (name, error) => console.error("[Lavalink] Error:", name, error));
 shoukaku.on("close", (name, code, reason) => console.warn("[Lavalink] Closed:", name, code, reason));
@@ -384,6 +529,9 @@ async function requireVoice(interaction) {
 
 client.once("ready", async () => {
   console.log("Logged in as " + client.user.tag);
+  refreshAudioNodes(true).catch(error => console.error("[Audio Nodes] Initial discovery failed:", error));
+  const audioNodeHealthTimer = setInterval(() => refreshAudioNodes(false).catch(error => console.error("[Audio Nodes] Health refresh failed:", error)), 120000);
+  audioNodeHealthTimer.unref?.();
   try { await loadControlRoles(); }
   catch (error) { console.error("[Permissions] Failed to load role settings:", error); }
   try { await loadCommandChannels(); }
@@ -514,6 +662,15 @@ client.on("interactionCreate", async interaction => {
       await refreshPlayerCards(interaction.guildId, status);
       return updated;
     }
+    if (interaction.isAutocomplete()) {
+      if (interaction.commandName !== "audionode") return interaction.respond([]);
+      const focused = interaction.options.getFocused().toLowerCase();
+      const choices = [...audioNodeConfigs.values()]
+        .filter(node => node.name.toLowerCase().includes(focused))
+        .slice(0, 25)
+        .map(node => ({ name: node.name.slice(0, 100), value: node.name }));
+      return interaction.respond(choices);
+    }
     if (!interaction.isChatInputCommand()) return;
     const name = interaction.commandName;
 
@@ -549,9 +706,61 @@ client.on("interactionCreate", async interaction => {
           { name: "Playback", value: "When you play a track, Pookie Play automatically finds related music. Turn List ON to play only saved List slots; turn it OFF to resume similar-track radio.", inline: false },
           { name: "List tools", value: "/list add slot query — Save a track in one of 10 slots\n/list show /list remove /list clear\n/play list — Play a saved List slot\n/queue /shuffle /remove /move /clearqueue /repeat /seek /nowplaying", inline: false },
           { name: "Controls", value: "/pause /resume /skip /stop /volume value and Player buttons", inline: false },
-          { name: "Admin", value: "/controlroles show — View allowed roles\n/controlroles add role — Add a control role\n/controlroles remove role — Remove a control role (Server Owner/Administrator only)", inline: false }
+          { name: "Admin", value: "/controlroles show — View allowed roles\n/controlroles add role — Add a control role\n/controlroles remove role — Remove a control role\n/audionode list / refresh — View and refresh audio nodes\n/audionode use node — Select a node\n/audionode auto — Automatically choose the best node (Server Owner/Administrator only)", inline: false }
         ).setFooter({ text: "Sources: YouTube • YouTube Music • SoundCloud (when available)." });
       return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
+    if (name === "audionode") {
+      if (!isServerAdmin(interaction)) {
+        return interaction.reply({ content: "Only the Server Owner or an Administrator can change the global Audio Node selection.", ephemeral: true });
+      }
+      const sub = interaction.options.getSubcommand();
+      if (sub === "list" || sub === "refresh") {
+        await interaction.deferReply({ ephemeral: true });
+        const result = await refreshAudioNodes(sub === "refresh");
+        const preferred = shoukaku.getIdealNode()?.name;
+        const rows = [...audioNodeConfigs.values()].map(config => {
+          const health = audioNodeHealth.get(config.name);
+          const liveNode = shoukaku.nodes.get(config.name);
+          const connected = liveNode?.state === 1;
+          const status = connected ? "🟢 Connected" : (health?.online ? "🟡 Reachable" : "🔴 Offline");
+          const ping = Number.isFinite(health?.ping) ? health.ping + " ms API ping" : "Ping unavailable";
+          const selected = selectedAudioNode === config.name ? " • MANUAL" : (selectedAudioNode === "auto" && preferred === config.name ? " • AUTO PICK" : "");
+          return status + " **" + config.name + "** — " + ping + selected;
+        });
+        rows.sort((a, b) => {
+          const aOnline = a.startsWith("🟢") ? 0 : a.startsWith("🟡") ? 1 : 2;
+          const bOnline = b.startsWith("🟢") ? 0 : b.startsWith("🟡") ? 1 : 2;
+          return aOnline - bOnline;
+        });
+        const description = rows.join("\n").slice(0, 3900) || "No audio nodes are configured.";
+        const embed = new EmbedBuilder().setColor(0x5865f2)
+          .setTitle("🎛️ Pookie Play — Audio Node Manager")
+          .setDescription(description)
+          .setFooter({ text: "Auto mode scores reachable nodes by API ping and Lavalink load. Ping is measured from the bot runner." });
+        return interaction.editReply({ embeds: [embed] });
+      }
+      if (sub === "auto") {
+        selectedAudioNode = "auto";
+        const best = shoukaku.getIdealNode()?.name;
+        return interaction.reply({
+          content: "✅ Audio Node mode set to AUTO. " + (best ? "Current best connected node: **" + best + "**." : "No node is connected yet; the bot will use the first healthy node when one becomes available.") + " Existing voice sessions stay on their current node until you /leave and /join again.",
+          ephemeral: true
+        });
+      }
+      if (sub === "use") {
+        const nodeName = interaction.options.getString("node", true);
+        const liveNode = shoukaku.nodes.get(nodeName);
+        if (!liveNode || liveNode.state !== 1) {
+          return interaction.reply({ content: "That node is not connected yet. Run /audionode refresh and choose a connected node.", ephemeral: true });
+        }
+        selectedAudioNode = nodeName;
+        return interaction.reply({
+          content: "✅ Selected **" + nodeName + "** for new voice connections. Existing voice sessions stay on their current node until you /leave and /join again.",
+          ephemeral: true
+        });
+      }
     }
 
     if (name === "controlroles") {

@@ -698,7 +698,7 @@ client.on("interactionCreate", async interaction => {
       const current = data.current ? "**Now Playing:** " + data.current.title : "Nothing is playing.";
       const upcoming = data.tracks.slice(0, 10).map((t, i) => (i + 1) + ". " + t.title).join("\n");
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎵 Pookie Play Queue")
-        .setDescription(current + (upcoming ? "\n\n**পরের গানগুলো:**\n" + upcoming : "\n\nQueue খালি।"))
+        .setDescription(current + (upcoming ? "\n\n**Up Next:**\n" + upcoming : "\n\nQueue is empty."))
         .setFooter({ text: "List: " + (data.listMode ? "ON" : "OFF") + " • Similar-track radio: " + (data.listMode ? "OFF" : "ON") + " • Repeat: " + data.repeat });
       return interaction.reply({ embeds: [embed] });
     }
@@ -778,7 +778,7 @@ client.on("interactionCreate", async interaction => {
       const ok = await music[name](interaction.guildId);
       await refreshPlayerCards(interaction.guildId, name === "stop" ? "Playback stopped" : (name === "pause" ? "Playback paused" : name === "resume" ? "Playback resumed" : "Track skipped"));
       const labels = { pause: "Pause", resume: "Resume", skip: "Skip", stop: "Stop" };
-      return interaction.reply(ok ? "✅ " + labels[name] + " সম্পন্ন হয়েছে।" : "Nothing is currently playing.");
+      return interaction.reply(ok ? "✅ " + labels[name] + " completed." : "Nothing is currently playing.");
     }
 
     if (name === "volume") {

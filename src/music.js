@@ -25,7 +25,7 @@ function normalizeUserQuery(query) {
   return presets[key] || q;
 }
 
-function createMusic(shoukaku, onTrackStart = async () => {}) {
+function createMusic(shoukaku, onTrackStart = async () => {}, onPlayerUpdate = async () => {}) {
   const states = new Map();
   const get = (id) => {
     if (!states.has(id)) states.set(id, {
@@ -322,7 +322,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
         fillAutoQueue(guildId).catch(error => console.error("[AutoPlay] Queue fill error:", error));
       }
     });
-    player.on("end", event => {
+    player.on("end", async event => {
       console.log("[Music] Track ended:", event.reason);
       const endReason = String(event.reason || "").toLowerCase();
       if (endReason === "finished") {
@@ -366,7 +366,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
           if (nextSlot && s.listSlots[nextSlot]) {
             s.listCurrentSlot = nextSlot;
             s.queue = [s.listSlots[nextSlot]];
-            playNext(guildId).catch(console.error);
+            await playNext(guildId).catch(console.error);
           } else {
             s.listCurrentSlot = null;
             s.listOrder = [];
@@ -374,8 +374,9 @@ function createMusic(shoukaku, onTrackStart = async () => {}) {
             console.log("[List Mode] Saved List finished; List remains ON and playback is idle.");
           }
         } else if (!s.listMode || s.queue.length > 0 || s.repeat === "track" || s.repeat === "queue" || s.repeat === "shuffle") {
-          playNext(guildId).catch(console.error);
+          await playNext(guildId).catch(console.error);
         }
+        if (!s.current) await onPlayerUpdate(guildId).catch(error => console.error("[Player status]", error));
       }
     });
     player.on("exception", event => recoverTrack(guildId, event.exception || event.error, event.track).catch(console.error));

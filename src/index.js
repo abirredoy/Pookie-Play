@@ -206,16 +206,21 @@ async function refreshAudioNodes(discover = false) {
   if (discover) {
     const directories = [
       "https://raw.githubusercontent.com/Austayo/lavalink-list/main/nodes.json",
-      "https://raw.githubusercontent.com/stackryze/lavalink-list/main/nodes.json"
+      "https://raw.githubusercontent.com/stackryze/lavalink-list/main/nodes.json",
+      "https://raw.githubusercontent.com/AjieDev/lavalink-list/master/nodes.json",
+      "https://raw.githubusercontent.com/creavitehq/lavalink-list-2/main/nodes.json",
+      "https://raw.githubusercontent.com/dawgcodes/lavalink-list-1/main/nodes.json"
     ];
     const directoryResults = await Promise.allSettled(directories.map(async url => {
       const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
       if (!response.ok) throw new Error("Directory HTTP " + response.status);
-      const entries = await response.json();
-      if (!Array.isArray(entries)) return 0;
+      const payload = await response.json();
+      const entries = Array.isArray(payload) ? payload
+        : Array.isArray(payload?.nodes) ? payload.nodes
+        : Array.isArray(payload?.data) ? payload.data : [];
       let added = 0;
       for (const entry of entries) {
-        if (String(entry.restVersion || "").toLowerCase() !== "v4") continue;
+        if (String(entry.restVersion || entry.version || "").toLowerCase() !== "v4") continue;
         const node = addAudioNodeConfig({
           name: "Community-" + String(entry.identifier || entry.host || "Node"),
           host: entry.host,
@@ -576,6 +581,8 @@ client.once("ready", async () => {
   refreshAudioNodes(true).catch(error => console.error("[Audio Nodes] Initial discovery failed:", error));
   const audioNodeHealthTimer = setInterval(() => refreshAudioNodes(false).catch(error => console.error("[Audio Nodes] Health refresh failed:", error)), 120000);
   audioNodeHealthTimer.unref?.();
+  const audioNodeDirectoryTimer = setInterval(() => refreshAudioNodes(true).catch(error => console.error("[Audio Nodes] Directory refresh failed:", error)), 600000);
+  audioNodeDirectoryTimer.unref?.();
   try { await loadControlRoles(); }
   catch (error) { console.error("[Permissions] Failed to load role settings:", error); }
   try { await loadCommandChannels(); }
@@ -610,11 +617,18 @@ client.on("interactionCreate", async interaction => {
         if (!selected) return interaction.reply({ content: "This search result has expired. Run /search again.", ephemeral: true });
         const channel = await requireVoice(interaction);
         await interaction.deferUpdate();
-        const started = await music.playResolved(interaction.guildId, channel, selected, interaction.channelId);
-        const embed = new EmbedBuilder().setColor(0x57f287).setTitle("🎶 Track selected")
-          .setDescription("**" + String(selected.info?.title || "Unknown track") + "**\\n" + String(selected.info?.author || "Unknown artist"));
-        if (selected.info?.uri) embed.setURL(selected.info.uri);
-        await interaction.message.edit({ embeds: [embed], components: [] });
+        // Reuse the search-result message as the live player card so controls appear
+        // on the same message as soon as the selected track starts.
+        rememberPlayerMessage(interaction.guildId, interaction.message);
+        await music.playResolved(interaction.guildId, channel, selected, interaction.channelId);
+        const q = music.getQueue(interaction.guildId);
+        const info = selected.info || {};
+        const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎶 Now Playing")
+          .setDescription("**" + String(info.title || "Unknown track").slice(0, 240) + "**\\n" + String(info.author || "Unknown artist").slice(0, 180));
+        setPlayerStats(embed, q);
+        embed.setFooter(playerStatusFooter(q, "Playback started"));
+        if (info.uri) embed.setURL(info.uri);
+        await interaction.message.edit({ embeds: [embed], components: controlRows(q) });
         return;
       }
       const data = music.getQueue(interaction.guildId);

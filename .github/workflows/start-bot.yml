@@ -23,6 +23,24 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Check private Lavalink connection settings
+        env:
+          TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+          PRIVATE_LAVALINK_HOST: ${{ secrets.PRIVATE_LAVALINK_HOST }}
+          PRIVATE_LAVALINK_PASSWORD: ${{ secrets.PRIVATE_LAVALINK_PASSWORD }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [ -z "$TAILSCALE_AUTHKEY" ] || [ -z "$PRIVATE_LAVALINK_HOST" ] || [ -z "$PRIVATE_LAVALINK_PASSWORD" ]; then
+            echo "::error::Add TAILSCALE_AUTHKEY, PRIVATE_LAVALINK_HOST and PRIVATE_LAVALINK_PASSWORD to GitHub Actions repository secrets."
+            exit 1
+          fi
+
+      - name: Connect GitHub runner to private Tailscale network
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+
       - name: Install bot dependencies
         run: npm install
 
@@ -38,6 +56,9 @@ jobs:
           LAVALINK_HOST: lavalink.cloudewave.in:2336
           LAVALINK_PASSWORD: cloudewave.in
           LAVALINK_SECURE: "false"
+          PRIVATE_LAVALINK_HOST: ${{ secrets.PRIVATE_LAVALINK_HOST }}
+          PRIVATE_LAVALINK_PASSWORD: ${{ secrets.PRIVATE_LAVALINK_PASSWORD }}
+          PRIVATE_LAVALINK_SECURE: "false"
         shell: bash
         run: |
           set -Eeuo pipefail

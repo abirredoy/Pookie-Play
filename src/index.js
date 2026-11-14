@@ -729,8 +729,12 @@ client.on("interactionCreate", async interaction => {
       const focused = interaction.options.getFocused().toLowerCase();
       const focusedSubcommand = interaction.options.getSubcommand(false);
       const choices = [...audioNodeConfigs.values()]
-        .filter(node => (focusedSubcommand !== "remove" || node.source === "Pookie Server" || node.source === "Manually added") &&
-          node.name.toLowerCase().includes(focused))
+        .filter(node => {
+          const isRemovableCustomNode = focusedSubcommand === "remove" &&
+            (node.source === "Pookie Server" || node.source === "Manually added");
+          const isOnline = audioNodeHealth.get(node.name)?.online === true;
+          return (isRemovableCustomNode || isOnline) && node.name.toLowerCase().includes(focused);
+        })
         .sort((a, b) => {
           const ah = audioNodeHealth.get(a.name);
           const bh = audioNodeHealth.get(b.name);
@@ -870,11 +874,14 @@ client.on("interactionCreate", async interaction => {
         await interaction.deferReply({ ephemeral: true });
         await refreshAudioNodes(true);
         const preferred = shoukaku.getIdealNode()?.name;
-        const rows = [...audioNodeConfigs.values()].map(config => {
+        // Keep offline directory entries internally for future health checks, but never show them.
+        const onlineConfigs = [...audioNodeConfigs.values()]
+          .filter(config => audioNodeHealth.get(config.name)?.online === true);
+        const rows = onlineConfigs.map(config => {
           const health = audioNodeHealth.get(config.name);
           const liveNode = shoukaku.nodes.get(config.name);
           const connected = liveNode?.state === 1;
-          const status = connected ? "🟢 Connected" : (health?.online ? "🟡 Reachable" : "🔴 Offline");
+          const status = connected ? "🟢 Connected" : "🟡 Online";
           const ping = Number.isFinite(health?.ping) ? health.ping + " ms API ping" : "Ping unavailable";
           const selected = selectedAudioNode === config.name ? " • MANUAL" : (selectedAudioNode === "auto" && preferred === config.name ? " • AUTO PICK" : "");
           return status + " **" + config.name + "** — " + ping + selected;
@@ -887,11 +894,11 @@ client.on("interactionCreate", async interaction => {
           const bPing = Number(b.match(/— (\d+) ms API ping/)?.[1] ?? 999999);
           return aPing - bPing;
         });
-        const description = rows.join("\n").slice(0, 3900) || "No audio nodes are configured.";
+        const description = rows.join("\n").slice(0, 3900) || "🔴 No public Lavalink v4 audio servers are online right now. Try /audionode refresh again later.";
         const embed = new EmbedBuilder().setColor(0x5865f2)
           .setTitle("🎛️ Pookie Play — Audio Node Manager")
           .setDescription(description)
-          .setFooter({ text: "Sorted by lowest bot-to-node API response time. Auto mode selects the lowest-latency connected node; server load breaks close ties." });
+          .setFooter({ text: "Showing online Lavalink v4 servers only • Sorted by lowest API ping • AUTO selects the best connected node." });
         return interaction.editReply({ embeds: [embed] });
       }
       if (sub === "auto") {

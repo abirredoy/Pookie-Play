@@ -714,8 +714,25 @@ client.on("interactionCreate", async interaction => {
       const focused = interaction.options.getFocused().toLowerCase();
       const choices = [...audioNodeConfigs.values()]
         .filter(node => node.name.toLowerCase().includes(focused))
+        .sort((a, b) => {
+          const ah = audioNodeHealth.get(a.name);
+          const bh = audioNodeHealth.get(b.name);
+          const aOnline = ah?.online === true;
+          const bOnline = bh?.online === true;
+          if (aOnline !== bOnline) return aOnline ? -1 : 1;
+          if (aOnline && bOnline) return (ah.ping ?? 999999) - (bh.ping ?? 999999);
+          return a.name.localeCompare(b.name);
+        })
         .slice(0, 25)
-        .map(node => ({ name: node.name.slice(0, 100), value: node.name }));
+        .map(node => {
+          const health = audioNodeHealth.get(node.name);
+          const pingLabel = health?.online
+            ? `🟢 ${node.name} — ${health.ping} ms`
+            : health?.checkedAt
+              ? `🔴 ${node.name} — Offline`
+              : `🟡 ${node.name} — Checking...`;
+          return { name: pingLabel.slice(0, 100), value: node.name };
+        });
       return interaction.respond(choices);
     }
     if (!interaction.isChatInputCommand()) return;

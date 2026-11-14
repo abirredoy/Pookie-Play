@@ -1,7 +1,8 @@
 require("dotenv").config();
 const {
   Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder,
-  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, ChannelType
+  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, ChannelType,
+  ModalBuilder, TextInputBuilder, TextInputStyle
 } = require("discord.js");
 const express = require("express");
 const { Shoukaku, Connectors } = require("shoukaku");
@@ -68,7 +69,12 @@ const commands = [
   new SlashCommandBuilder().setName("start").setDescription("Show Pookie Play controls and Control Panel"),
   new SlashCommandBuilder().setName("help").setDescription("Show Pookie Play commands"),
   new SlashCommandBuilder().setName("audionode").setDescription("Manage Pookie Play audio servers")
-    .addSubcommand(s => s.setName("list").setDescription("Show public audio nodes, status and ping"))
+    .addSubcommand(s => s.setName("list").setDescription("Show audio nodes, online status and ping"))
+    .addSubcommand(s => s.setName("add").setDescription("Securely add your own Lavalink server"))
+    .addSubcommand(s => s.setName("remove").setDescription("Remove an added audio node")
+      .addStringOption(o => o.setName("node").setDescription("Audio node to remove").setRequired(true).setAutocomplete(true)))
+    .addSubcommand(s => s.setName("test").setDescription("Test node connection and YouTube search")
+      .addStringOption(o => o.setName("node").setDescription("Audio node to test").setRequired(false).setAutocomplete(true)))
     .addSubcommand(s => s.setName("use").setDescription("Select an audio node for new voice connections")
       .addStringOption(o => o.setName("node").setDescription("Audio node name").setRequired(true).setAutocomplete(true)))
     .addSubcommand(s => s.setName("auto").setDescription("Automatically choose the best available node"))
@@ -87,7 +93,7 @@ function addAudioNodeConfig(config) {
   const port = Number(config.port || 2333);
   const auth = String(config.auth || "").trim();
   if (!host || !auth || !Number.isInteger(port) || port < 1 || port > 65535) return null;
-  if (!/^[a-zA-Z0-9.:-]+$/.test(host) || /(^localhost$|\.local$)/i.test(host)) return null;
+  if (!/^[a-zA-Z0-9.-]+$/.test(host) || /(^localhost$|\.local$)/i.test(host)) return null;
   const ipv4 = host.split(".");
   if (ipv4.length === 4 && ipv4.every(part => /^\d+$/.test(part))) {
     const octets = ipv4.map(Number);
@@ -97,7 +103,13 @@ function addAudioNodeConfig(config) {
       (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)) return null;
   }
   const key = host.toLowerCase() + ":" + port;
-  if (audioNodeConfigs.has(key)) return audioNodeConfigs.get(key);
+  if (audioNodeConfigs.has(key)) {
+    const existing = audioNodeConfigs.get(key);
+    existing.auth = auth;
+    existing.secure = Boolean(config.secure);
+    existing.source = config.source || existing.source;
+    return existing;
+  }
   let name = String(config.name || "Public-Node").replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 60);
   const usedNames = new Set([...audioNodeConfigs.values()].map(item => item.name));
   const baseName = name;

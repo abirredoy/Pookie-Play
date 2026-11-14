@@ -108,11 +108,21 @@ function addAudioNodeConfig(config) {
   return saved;
 }
 
+function parseAudioHostPort(value, defaultPort) {
+  const raw = String(value || "").trim().replace(/^wss?:[/][/]/i, "").replace(/^https?:[/][/]/i, "").split("/")[0];
+  if (!raw) return null;
+  try {
+    const parsed = new URL("http://" + raw);
+    return { host: parsed.hostname, port: Number(parsed.port || defaultPort) };
+  } catch {
+    return { host: raw, port: Number(defaultPort) };
+  }
+}
+
 const configuredPublic = process.env.LAVALINK_HOST && process.env.LAVALINK_PASSWORD
   ? addAudioNodeConfig({
       name: "CloudeWave-Public",
-      host: process.env.LAVALINK_HOST,
-      port: Number(process.env.LAVALINK_PORT || 2336),
+      ...parseAudioHostPort(process.env.LAVALINK_HOST, process.env.LAVALINK_PORT || 2336),
       auth: process.env.LAVALINK_PASSWORD,
       secure: process.env.LAVALINK_SECURE === "true",
       source: "Existing bot configuration"
@@ -128,8 +138,7 @@ addAudioNodeConfig({ name: "TriniumHost-V4-SSL", host: "lavalink-v4.triniumhost.
 if (process.env.PRIVATE_LAVALINK_HOST && process.env.PRIVATE_LAVALINK_PASSWORD) {
   addAudioNodeConfig({
     name: "Private-Lavalink",
-    host: process.env.PRIVATE_LAVALINK_HOST,
-    port: Number(process.env.PRIVATE_LAVALINK_PORT || 2333),
+    ...parseAudioHostPort(process.env.PRIVATE_LAVALINK_HOST, process.env.PRIVATE_LAVALINK_PORT || 2333),
     auth: process.env.PRIVATE_LAVALINK_PASSWORD,
     secure: process.env.PRIVATE_LAVALINK_SECURE === "true",
     source: "Private server"

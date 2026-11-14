@@ -1,4 +1,3 @@
-const { requireSession } = require("../lib/control-auth");
 const WORKFLOW = "start-bot.yml";
 const ACTIVE = new Set(["queued", "in_progress", "waiting", "requested", "pending"]);
 
@@ -14,8 +13,6 @@ module.exports = async (req, res) => {
     return res.status(405).json({ error: "Method not allowed." });
   }
 
-  // Require a valid Discord OAuth session and an allowlisted user before dispatching.
-  if (!requireSession(req, res)) return;
 
   // Accept requests only from this website to prevent cross-site button abuse.
   const origin = req.headers.origin;

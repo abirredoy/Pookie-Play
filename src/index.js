@@ -241,6 +241,42 @@ async function refreshAudioNodes(discover = false) {
   return { total: configs.length, online };
 }
 
+async function loadAudioNodeSettings() {
+  const repo = process.env.GITHUB_REPOSITORY;
+  const token = process.env.GITHUB_TOKEN;
+  if (!repo || !token) return;
+  const url = "https://api.github.com/repos/" + repo + "/contents/data/audio-node-settings.json";
+  const response = await fetch(url, { headers: { Authorization: "Bearer " + token, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" } });
+  if (response.status === 404) return;
+  if (!response.ok) throw new Error("Could not load Audio Node settings: HTTP " + response.status);
+  const file = await response.json();
+  const saved = JSON.parse(Buffer.from(file.content, "base64").toString("utf8"));
+  selectedAudioNode = saved?.mode === "manual" && typeof saved.nodeName === "string" ? saved.nodeName : "auto";
+  console.log("[Audio Nodes] Loaded selection mode:", selectedAudioNode);
+}
+
+async function saveAudioNodeSettings(mode, nodeName = null) {
+  const repo = process.env.GITHUB_REPOSITORY;
+  const token = process.env.GITHUB_TOKEN;
+  if (!repo || !token) throw new Error("GitHub storage is unavailable; Audio Node selection cannot be saved.");
+  const url = "https://api.github.com/repos/" + repo + "/contents/data/audio-node-settings.json";
+  const headers = { Authorization: "Bearer " + token, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
+  const current = await fetch(url, { headers });
+  let sha;
+  if (current.ok) sha = (await current.json()).sha;
+  else if (current.status !== 404) throw new Error("Could not read Audio Node settings: HTTP " + current.status);
+  const saved = { mode, nodeName: mode === "manual" ? nodeName : null };
+  const body = {
+    message: "Update Pookie Play Audio Node selection",
+    content: Buffer.from(JSON.stringify(saved, null, 2) + "\\n").toString("base64"),
+    branch: process.env.GITHUB_REF_NAME || "main"
+  };
+  if (sha) body.sha = sha;
+  const response = await fetch(url, { method: "PUT", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!response.ok) throw new Error("Could not save Audio Node settings: HTTP " + response.status + " " + (await response.text()).slice(0, 250));
+  selectedAudioNode = mode === "manual" ? nodeName : "auto";
+}
+
 shoukaku.on("ready", name => console.log("[Lavalink] Connected:", name));
 shoukaku.on("error", (name, error) => console.error("[Lavalink] Error:", name, error));
 shoukaku.on("close", (name, code, reason) => console.warn("[Lavalink] Closed:", name, code, reason));
@@ -547,6 +583,8 @@ client.once("ready", async () => {
   catch (error) { console.error("[Command Channel] Failed to load settings:", error); }
   try { await loadListStorage(); }
   catch (error) { console.error("[List Queue] Failed to load saved slots:", error); }
+  try { await loadAudioNodeSettings(); }
+  catch (error) { console.error("[Audio Nodes] Failed to load saved selection:", error); }
   const rest = new REST({ version: "10" }).setToken(token);
   try {
     const route = process.env.GUILD_ID
@@ -751,12 +789,10 @@ client.on("interactionCreate", async interaction => {
         return interaction.editReply({ embeds: [embed] });
       }
       if (sub === "auto") {
-        selectedAudioNode = "auto";
+        await interaction.deferReply({ ephemeral: true });
+        await saveAudioNodeSettings("auto");
         const best = shoukaku.getIdealNode()?.name;
-        return interaction.reply({
-          content: "✅ Audio Node mode set to AUTO. " + (best ? "Current best connected node: **" + best + "**." : "No node is connected yet; the bot will use the first healthy node when one becomes available.") + " Existing voice sessions stay on their current node until you /leave and /join again.",
-          ephemeral: true
-        });
+        return interaction.editReply("✅ Audio Node mode set to AUTO. " + (best ? "Current best connected node: **" + best + "**." : "No node is connected yet; the bot will use the first healthy node when one becomes available.") + " This selection is saved. Existing voice sessions stay on their current node until you /leave and /join again.");
       }
       if (sub === "use") {
         const nodeName = interaction.options.getString("node", true);
@@ -764,11 +800,9 @@ client.on("interactionCreate", async interaction => {
         if (!liveNode || liveNode.state !== 1) {
           return interaction.reply({ content: "That node is not connected yet. Run /audionode refresh and choose a connected node.", ephemeral: true });
         }
-        selectedAudioNode = nodeName;
-        return interaction.reply({
-          content: "✅ Selected **" + nodeName + "** for new voice connections. Existing voice sessions stay on their current node until you /leave and /join again.",
-          ephemeral: true
-        });
+        await interaction.deferReply({ ephemeral: true });
+        await saveAudioNodeSettings("manual", nodeName);
+        return interaction.editReply("✅ Selected **" + nodeName + "** for new voice connections. This selection is saved. Existing voice sessions stay on their current node until you /leave and /join again.");
       }
     }
 

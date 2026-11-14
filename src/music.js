@@ -13,7 +13,7 @@ function normalizeUserQuery(query) {
     bangla: "Bangla songs popular hits",
     "বাংলা": "Bangla songs popular hits",
     hindi: "Hindi songs popular hits",
-    হিন্দি: "Hindi songs popular hits",
+    hindi: "Hindi songs popular hits",
     global: "global international popular songs",
     worldwide: "global international popular songs",
     english: "English international songs",
@@ -389,7 +389,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}, onPlayerUpdate = a
       const connection = shoukaku.connections?.get(guildId);
       const connectedChannelId = connection?.channelId;
       if (connectedChannelId && connectedChannelId !== channel.id) {
-        throw new Error("আমি ইতিমধ্যে অন্য voice channel-এ আছি। আগে /leave ব্যবহার করো।");
+        throw new Error("I am already connected to another voice channel. Use /leave first.");
       }
       if (connection) return s.player;
       // Recover if the local player exists but Shoukaku has lost its voice connection.
@@ -421,12 +421,12 @@ function createMusic(shoukaku, onTrackStart = async () => {}, onPlayerUpdate = a
     },
     async add(id, channel, query, textChannelId) {
       const s = get(id);
-      if (s.mode !== "queue") throw new Error("আগে /mode type:Queue Mode চালু করো। Auto Mode-এ /add ব্যবহার করা যাবে না।");
-      if (s.listMode) throw new Error("List Mode চালু আছে। সাধারণ Queue-তে গান দিতে আগে /list mode enabled:false করো।");
+      if (s.mode !== "queue") throw new Error("Enable Queue Mode before using /add. The /add command is unavailable in Auto Mode.");
+      if (s.listMode) throw new Error("List Mode is enabled. Turn List Mode off before adding tracks to the regular queue.");
       await join(id, channel);
       if (textChannelId) s.textChannelId = textChannelId;
       const tracks = await resolve(query, s.player.node);
-      if (!tracks.length) throw new Error("এই নাম বা লিংকের গানটি পাওয়া যায়নি। অন্য নাম বা সরাসরি song link দিয়ে চেষ্টা করো।");
+      if (!tracks.length) throw new Error("No track was found for that name or link. Try another search or a direct song URL.");
       const wasIdle = !s.current;
       s.queue.push(tracks[0]);
       if (wasIdle) await playNext(id);
@@ -435,10 +435,10 @@ function createMusic(shoukaku, onTrackStart = async () => {}, onPlayerUpdate = a
     async play(id, channel, query, textChannelId) {
       await join(id, channel);
       const s = get(id);
-      if (s.listMode) throw new Error("List ON আছে। বাইরের গান চালাতে আগে Player-এর List বাটন OFF করো।");
+      if (s.listMode) throw new Error("List Mode is ON. Turn the Player's List button OFF before playing an external track.");
       if (textChannelId) s.textChannelId = textChannelId;
       const tracks = await resolve(query, s.player.node);
-      if (!tracks.length) throw new Error("YouTube ও SoundCloud—কোনো সোর্স থেকেই গানটি পাওয়া যায়নি। অন্য নাম বা সরাসরি audio link দিয়ে চেষ্টা করো।");
+      if (!tracks.length) throw new Error("No results were found on YouTube or SoundCloud. Try another search or a direct audio URL.");
       const isDirectUrl = /^https?:\/\//i.test(query);
       const wasIdle = !s.current;
       s.currentQuery = query;
@@ -463,7 +463,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}, onPlayerUpdate = a
           s.current = null;
         }
         const started = await playNext(id);
-        if (!started) throw new Error("নির্বাচিত গানটি Lavalink চালু করতে পারেনি। Actions log পরীক্ষা করো।");
+        if (!started) throw new Error("Lavalink could not start the selected track. Check the Actions log.");
         return { track: tracks[0], queued: false, queueLength: s.queue.length };
       }
       // Queue Mode adds the selected track without interrupting the current song.
@@ -473,13 +473,13 @@ function createMusic(shoukaku, onTrackStart = async () => {}, onPlayerUpdate = a
     },
     async searchTracks(id, query) {
       const s = get(id);
-      if (!s.player?.node) throw new Error("আগে voice channel-এ যোগ দাও।");
+      if (!s.player?.node) throw new Error("Join a voice channel first.");
       return (await resolve(query, s.player.node)).slice(0, 10);
     },
     async playResolved(id, channel, track, textChannelId) {
       await join(id, channel);
       const s = get(id);
-      if (s.listMode) throw new Error("List ON আছে। বাইরের গান চালাতে আগে Player-এর List বাটন OFF করো।");
+      if (s.listMode) throw new Error("List Mode is ON. Turn the Player's List button OFF before playing an external track.");
       s.mode = "auto";
       s.autoSimilarTo = null;
       if (textChannelId) s.textChannelId = textChannelId;
@@ -491,7 +491,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}, onPlayerUpdate = a
         s.current = null;
       }
       const started = await playNext(id);
-      if (!started) throw new Error("নির্বাচিত গানটি Lavalink চালু করতে পারেনি। Actions log পরীক্ষা করো।");
+      if (!started) throw new Error("Lavalink could not start the selected track. Check the Actions log.");
       return { track, queued: false, queueLength: s.queue.length };
     },
     async pause(id) {
@@ -627,12 +627,12 @@ function createMusic(shoukaku, onTrackStart = async () => {}, onPlayerUpdate = a
     async addList(id, channel, slot, query, textChannelId) {
       const s = get(id);
       const n = Number(slot);
-      if (!Number.isInteger(n) || n < 1 || n > 10) throw new Error("List Slot অবশ্যই 1 থেকে 10-এর মধ্যে হতে হবে।");
-      if (s.listSlots[n]) throw new Error("List Slot " + n + " আগে থেকেই ভর্তি। অন্য Slot বেছে নাও অথবা আগে remove করো।");
+      if (!Number.isInteger(n) || n < 1 || n > 10) throw new Error("List Slot must be between 1 and 10.");
+      if (s.listSlots[n]) throw new Error("List Slot " + n + " is already occupied. Choose another slot or remove the existing track first.");
       await join(id, channel);
       if (textChannelId) s.textChannelId = textChannelId;
       const tracks = await resolve(query, s.player.node);
-      if (!tracks.length) throw new Error("এই গানটি পাওয়া যায়নি। অন্য নাম বা লিংক দিয়ে চেষ্টা করো।");
+      if (!tracks.length) throw new Error("Track not found. Try another title or URL.");
       s.listSlots[n] = tracks[0];
       return { slot: n, track: tracks[0], count: Object.keys(s.listSlots).length };
     },
@@ -695,8 +695,8 @@ function createMusic(shoukaku, onTrackStart = async () => {}, onPlayerUpdate = a
         return false;
       }
       const slots = Object.keys(s.listSlots).map(Number).sort((a,b)=>a-b);
-      if (!slots.length) throw new Error("List খালি। আগে /list add দিয়ে গান যোগ করো।");
-      if (!s.player) throw new Error("আগে voice channel-এ যোগ দাও।");
+      if (!slots.length) throw new Error("The List is empty. Add tracks with /list add first.");
+      if (!s.player) throw new Error("Join a voice channel first.");
       s.mode = "auto";
       s.listMode = true;
       s.listOrder = slots.slice();
@@ -715,7 +715,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}, onPlayerUpdate = a
     },
     async playList(id, channel, slot, textChannelId) {
       const s = get(id), n = Number(slot);
-      if (!s.listSlots[n]) throw new Error("List Slot " + n + " খালি। আগে /list add দিয়ে গান রাখো।");
+      if (!s.listSlots[n]) throw new Error("List Slot " + n + " is empty. Save a track with /list add first.");
       await join(id, channel);
       if (textChannelId) s.textChannelId = textChannelId;
       s.mode = "auto";
@@ -740,12 +740,12 @@ function createMusic(shoukaku, onTrackStart = async () => {}, onPlayerUpdate = a
     async randomNext(id) {
       const s = get(id);
       if (!s.player) return false;
-      if (s.listMode) throw new Error("List ON আছে। Random Play-এর জন্য আগে List বাটন OFF করো।");
+      if (s.listMode) throw new Error("List Mode is ON. Turn the List button OFF before using Random Play.");
       s.listCurrentSlot = null;
       s.listOrder = [];
       s.mode = "auto";
       const candidate = await findRandomTrack(s);
-      if (!candidate) throw new Error("Lavalink connected, কিন্তু কোনো search source গান ফেরত দিচ্ছে না। Lavalink node-এর YouTube/SoundCloud search source পরীক্ষা করো।");
+      if (!candidate) throw new Error("Lavalink is connected, but no search source returned tracks. Check the node's YouTube/SoundCloud search sources.");
       if (s.current) {
         s.history.unshift(s.current);
         s.history = s.history.slice(0, 25);
@@ -755,7 +755,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}, onPlayerUpdate = a
       if (s.current) await s.player.stopTrack();
       s.current = null;
       const started = await playNext(id);
-      if (!started) throw new Error("গান পাওয়া গেছে, কিন্তু Lavalink সেটি চালু করতে পারেনি। Actions log-এ [Music] Could not start track দেখো।");
+      if (!started) throw new Error("A track was found, but Lavalink could not start it. Check the Actions log for [Music] Could not start track.");
       return true;
     },
     async seek(id, position) {

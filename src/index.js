@@ -780,8 +780,8 @@ client.on("interactionCreate", async interaction => {
           const aOnline = a.startsWith("🟢") || a.startsWith("🟡") ? 0 : 1;
           const bOnline = b.startsWith("🟢") || b.startsWith("🟡") ? 0 : 1;
           if (aOnline !== bOnline) return aOnline - bOnline;
-          const aPing = Number(a.match(/— (\\d+) ms API ping/)?.[1] ?? 999999);
-          const bPing = Number(b.match(/— (\\d+) ms API ping/)?.[1] ?? 999999);
+          const aPing = Number(a.match(/— (\d+) ms API ping/)?.[1] ?? 999999);
+          const bPing = Number(b.match(/— (\d+) ms API ping/)?.[1] ?? 999999);
           return aPing - bPing;
         });
         const description = rows.join("\n").slice(0, 3900) || "No audio nodes are configured.";

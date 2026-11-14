@@ -570,6 +570,7 @@ function createMusic(shoukaku, onTrackStart = async () => {}, onPlayerUpdate = a
       if (!s.player) return false;
       s.queue = [];
       s.current = null;
+      s.paused = false;
       s.repeat = "off";
       s.listMode = false;
       s.listCurrentSlot = null;

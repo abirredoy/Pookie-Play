@@ -737,8 +737,10 @@ client.on("interactionCreate", async interaction => {
     if (interaction.isAutocomplete()) {
       if (interaction.commandName !== "audionode") return interaction.respond([]);
       const focused = interaction.options.getFocused().toLowerCase();
+      const focusedSubcommand = interaction.options.getSubcommand(false);
       const choices = [...audioNodeConfigs.values()]
-        .filter(node => node.name.toLowerCase().includes(focused))
+        .filter(node => (focusedSubcommand !== "remove" || node.source === "Pookie Server" || node.source === "Manually added") &&
+          node.name.toLowerCase().includes(focused))
         .sort((a, b) => {
           const ah = audioNodeHealth.get(a.name);
           const bh = audioNodeHealth.get(b.name);
@@ -759,6 +761,35 @@ client.on("interactionCreate", async interaction => {
           return { name: pingLabel.slice(0, 100), value: node.name };
         });
       return interaction.respond(choices);
+    }
+    if (interaction.isModalSubmit() && interaction.customId === "pookie_audionode_add") {
+      if (!isServerAdmin(interaction)) return interaction.reply({ content: "Only the Server Owner or an Administrator can add an audio node.", ephemeral: true });
+      const nodeName = interaction.fields.getTextInputValue("node_name").trim() || "Pookie-Server";
+      const endpoint = interaction.fields.getTextInputValue("node_endpoint").trim();
+      const portText = interaction.fields.getTextInputValue("node_port").trim();
+      const password = interaction.fields.getTextInputValue("node_password");
+      let host; let port; let secure;
+      try {
+        if (/^(https?|wss?):\/\//i.test(endpoint)) {
+          const parsed = new URL(endpoint);
+          if (!["http:", "https:", "ws:", "wss:"].includes(parsed.protocol) || parsed.pathname !== "/" || parsed.search || parsed.hash) throw new Error("Use only the server base URL, without a path.");
+          host = parsed.hostname;
+          secure = parsed.protocol === "https:" || parsed.protocol === "wss:";
+          port = Number(portText || parsed.port || (secure ? 443 : 2333));
+        } else {
+          const parsed = parseAudioHostPort(endpoint, portText || 2333);
+          if (!parsed) throw new Error("Enter a valid host or HTTPS URL.");
+          host = parsed.host; port = Number(portText || parsed.port); secure = false;
+        }
+      } catch (error) { return interaction.reply({ content: "❌ Invalid server address: " + error.message, ephemeral: true }); }
+      if (!password.trim()) return interaction.reply({ content: "❌ Server password is required.", ephemeral: true });
+      const added = addAudioNodeConfig({ name: nodeName, host, port, auth: password, secure, source: "Manually added" });
+      if (!added) return interaction.reply({ content: "❌ Invalid server details. Check the host, port and address.", ephemeral: true });
+      await interaction.deferReply({ ephemeral: true });
+      const online = await checkAudioNode(added);
+      return interaction.editReply(online
+        ? "✅ **" + added.name + "** was added and is reachable. Run `/audionode test` to test YouTube search, then `/audionode use` to select it."
+        : "⚠️ **" + added.name + "** was added for this bot session, but it is currently offline or the password is incorrect. Check `/audionode list` and try again.");
     }
     if (!interaction.isChatInputCommand()) return;
     const name = interaction.commandName;

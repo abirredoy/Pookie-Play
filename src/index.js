@@ -826,7 +826,7 @@ client.on("interactionCreate", async interaction => {
           { name: "Playback", value: "When you play a track, Pookie Play automatically finds related music. Turn List ON to play only saved List slots; turn it OFF to resume similar-track radio.", inline: false },
           { name: "List tools", value: "/list add slot query — Save a track in one of 10 slots\n/list show /list remove /list clear\n/play list — Play a saved List slot\n/queue /shuffle /remove /move /clearqueue /repeat /seek /nowplaying", inline: false },
           { name: "Controls", value: "/pause /resume /skip /stop /volume value and Player buttons", inline: false },
-          { name: "Admin", value: "/controlroles show — View allowed roles\n/controlroles add role — Add a control role\n/controlroles remove role — Remove a control role\n/audionode list / refresh — View and refresh audio nodes\n/audionode use node — Select a node\n/audionode auto — Automatically choose the best node (Server Owner/Administrator only)", inline: false }
+          { name: "Admin", value: "/controlroles show — View allowed roles\n/controlroles add role — Add a control role\n/controlroles remove role — Remove a control role\n/audionode add — Add a private server using a secure modal\n/audionode list / refresh — View status and ping\n/audionode test — Test server and YouTube search\n/audionode use node / remove node / auto", inline: false }
         ).setFooter({ text: "Sources: YouTube • YouTube Music • SoundCloud (when available)." });
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
@@ -836,6 +836,46 @@ client.on("interactionCreate", async interaction => {
         return interaction.reply({ content: "Only the Server Owner or an Administrator can change the global Audio Node selection.", ephemeral: true });
       }
       const sub = interaction.options.getSubcommand();
+      if (sub === "add") {
+        const modal = new ModalBuilder().setCustomId("pookie_audionode_add").setTitle("Add Lavalink Audio Server");
+        const nameInput = new TextInputBuilder().setCustomId("node_name").setLabel("Server name").setStyle(TextInputStyle.Short).setPlaceholder("Pookie-Server").setRequired(false).setMaxLength(50);
+        const endpointInput = new TextInputBuilder().setCustomId("node_endpoint").setLabel("Server URL or host").setStyle(TextInputStyle.Short).setPlaceholder("https://xxxx.trycloudflare.com").setRequired(true).setMaxLength(200);
+        const portInput = new TextInputBuilder().setCustomId("node_port").setLabel("Port (leave blank for automatic)").setStyle(TextInputStyle.Short).setPlaceholder("443 for HTTPS tunnel, 2333 for direct").setRequired(false).setMaxLength(5);
+        const passwordInput = new TextInputBuilder().setCustomId("node_password").setLabel("Lavalink password").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(200);
+        modal.addComponents(new ActionRowBuilder().addComponents(nameInput), new ActionRowBuilder().addComponents(endpointInput), new ActionRowBuilder().addComponents(portInput), new ActionRowBuilder().addComponents(passwordInput));
+        return interaction.showModal(modal);
+      }
+      if (sub === "remove") {
+        const nodeName = interaction.options.getString("node", true);
+        const config = [...audioNodeConfigs.values()].find(node => node.name === nodeName);
+        if (!config || !["Pookie Server", "Manually added"].includes(config.source)) return interaction.reply({ content: "That node is not a manually added server.", ephemeral: true });
+        const key = config.host.toLowerCase() + ":" + config.port;
+        audioNodeConfigs.delete(key); audioNodeHealth.delete(config.name);
+        if (shoukaku.nodes.has(config.name)) shoukaku.removeNode(config.name);
+        if (selectedAudioNode === config.name) await saveAudioNodeSettings("auto");
+        return interaction.reply({ content: "🗑️ Removed **" + config.name + "** from this bot session. Automatic mode is active if it was selected.", ephemeral: true });
+      }
+      if (sub === "test") {
+        await interaction.deferReply({ ephemeral: true });
+        const requested = interaction.options.getString("node");
+        const configs = requested ? [...audioNodeConfigs.values()].filter(node => node.name === requested) : [...audioNodeConfigs.values()].filter(node => node.source === "Pookie Server" || node.source === "Manually added");
+        if (!configs.length) return interaction.editReply("No custom audio server found. Add one with `/audionode add` first.");
+        const reports = [];
+        for (const config of configs) {
+          const online = await checkAudioNode(config);
+          if (!online) { reports.push("🔴 **" + config.name + "** — Offline / password rejected."); continue; }
+          try {
+            const protocol = config.secure ? "https" : "http";
+            const url = protocol + "://" + config.host + ":" + config.port + "/v4/loadtracks?identifier=" + encodeURIComponent("ytsearch:lofi music");
+            const response = await fetch(url, { headers: { Authorization: config.auth, "User-Agent": "PookiePlay-AudioNodeTest/1.0" }, signal: AbortSignal.timeout(12000) });
+            if (!response.ok) throw new Error("HTTP " + response.status);
+            const result = await response.json();
+            const tracks = Array.isArray(result.tracks) ? result.tracks : [];
+            reports.push(tracks.length ? "🟢 **" + config.name + "** — Online; YouTube search returned " + tracks.length + " track(s)." : "🟡 **" + config.name + "** — Online, but YouTube search returned no tracks (" + String(result.loadType || "unknown") + ").");
+          } catch (error) { reports.push("🟡 **" + config.name + "** — REST reachable, YouTube test failed: " + String(error.message || error).slice(0, 100)); }
+        }
+        return interaction.editReply(reports.join("\n").slice(0, 1900) + "\n\nFor the final audio check, join a voice channel and run `/play query`.");
+      }
       if (sub === "list" || sub === "refresh") {
         await interaction.deferReply({ ephemeral: true });
         await refreshAudioNodes(sub === "refresh");

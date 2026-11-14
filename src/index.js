@@ -148,7 +148,7 @@ if (process.env.PRIVATE_LAVALINK_HOST && process.env.PRIVATE_LAVALINK_PASSWORD) 
 function audioNodeScore(node) {
   const ping = audioNodeHealth.get(node.name)?.ping;
   const pingScore = Number.isFinite(ping) ? ping : 5000;
-  return pingScore + (Number(node.penalties) || 0) * 5;
+  return pingScore * 1000 + (Number(node.penalties) || 0);
 }
 
 const initialAudioNodes = [...audioNodeConfigs.values()].map(node => ({
@@ -777,22 +777,25 @@ client.on("interactionCreate", async interaction => {
           return status + " **" + config.name + "** — " + ping + selected;
         });
         rows.sort((a, b) => {
-          const aOnline = a.startsWith("🟢") ? 0 : a.startsWith("🟡") ? 1 : 2;
-          const bOnline = b.startsWith("🟢") ? 0 : b.startsWith("🟡") ? 1 : 2;
-          return aOnline - bOnline;
+          const aOnline = a.startsWith("🟢") || a.startsWith("🟡") ? 0 : 1;
+          const bOnline = b.startsWith("🟢") || b.startsWith("🟡") ? 0 : 1;
+          if (aOnline !== bOnline) return aOnline - bOnline;
+          const aPing = Number(a.match(/— (\\d+) ms API ping/)?.[1] ?? 999999);
+          const bPing = Number(b.match(/— (\\d+) ms API ping/)?.[1] ?? 999999);
+          return aPing - bPing;
         });
         const description = rows.join("\n").slice(0, 3900) || "No audio nodes are configured.";
         const embed = new EmbedBuilder().setColor(0x5865f2)
           .setTitle("🎛️ Pookie Play — Audio Node Manager")
           .setDescription(description)
-          .setFooter({ text: "Auto mode scores reachable nodes by API ping and Lavalink load. Ping is measured from the bot runner." });
+          .setFooter({ text: "Sorted by lowest bot-to-node API response time. Auto mode selects the lowest-latency connected node; server load breaks close ties." });
         return interaction.editReply({ embeds: [embed] });
       }
       if (sub === "auto") {
         await interaction.deferReply({ ephemeral: true });
         await saveAudioNodeSettings("auto");
         const best = shoukaku.getIdealNode()?.name;
-        return interaction.editReply("✅ Audio Node mode set to AUTO. " + (best ? "Current best connected node: **" + best + "**." : "No node is connected yet; the bot will use the first healthy node when one becomes available.") + " This selection is saved. Existing voice sessions stay on their current node until you /leave and /join again.");
+        return interaction.editReply("✅ Audio Node mode set to AUTO. " + (best ? "Current best connected node: **" + best + "**." : "No node is connected yet; the bot will use the first healthy node when one becomes available.") + " This selection is saved. The best connected node is re-evaluated on every new /join.");
       }
       if (sub === "use") {
         const nodeName = interaction.options.getString("node", true);
@@ -802,7 +805,13 @@ client.on("interactionCreate", async interaction => {
         }
         await interaction.deferReply({ ephemeral: true });
         await saveAudioNodeSettings("manual", nodeName);
-        return interaction.editReply("✅ Selected **" + nodeName + "** for new voice connections. This selection is saved. Existing voice sessions stay on their current node until you /leave and /join again.");
+        const activePlayers = [...shoukaku.players.values()];
+        const moveResults = await Promise.allSettled(activePlayers.map(player => player.move(nodeName)));
+        const moved = moveResults.filter(result => result.status === "fulfilled" && result.value === true).length;
+        const failed = moveResults.filter(result => result.status === "rejected" || result.value === false).length;
+        return interaction.editReply("✅ Selected **" + nodeName + "**. " +
+          (activePlayers.length ? "Moved " + moved + " active player(s)" + (failed ? "; " + failed + " could not be moved." : ".") : "New /join connections will use this node.") +
+          " The selection is saved. Use /audionode auto to return to automatic best-node selection.");
       }
     }
 
@@ -933,6 +942,7 @@ client.on("interactionCreate", async interaction => {
     if (name === "join") {
       const channel = await requireVoice(interaction);
       await interaction.deferReply();
+      if (selectedAudioNode === "auto") await refreshAudioNodes(false);
       await music.join(interaction.guildId, channel);
       await refreshPlayerCards(interaction.guildId, "Connected to voice channel");
       return interaction.editReply("🎧 Pookie Play joined your voice channel.");

@@ -121,6 +121,8 @@ const music = createMusic(shoukaku, async (guildId, track, state) => {
   } catch (error) {
     console.error("[Player message] Could not post track card:", error?.message || error);
   }
+}, async guildId => {
+  await refreshPlayerCards(guildId, "Playback stopped");
 });
 const listStoragePath = "data/list-queues.json";
 let listSaveChain = Promise.resolve();

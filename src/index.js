@@ -66,8 +66,8 @@ const commands = [
     .addSubcommand(s => s.setName("remove").setDescription("Remove a role from bot control")
       .addRoleOption(o => o.setName("role").setDescription("Role to remove").setRequired(true))),
   new SlashCommandBuilder().setName("start").setDescription("Show Pookie Play controls and Control Panel"),
-  new SlashCommandBuilder().setName("help").setDescription("Show Pookie Play commands")
-  ,new SlashCommandBuilder().setName("audionode").setDescription("Manage Pookie Play audio servers")
+  new SlashCommandBuilder().setName("help").setDescription("Show Pookie Play commands"),
+  new SlashCommandBuilder().setName("audionode").setDescription("Manage Pookie Play audio servers")
     .addSubcommand(s => s.setName("list").setDescription("Show public audio nodes, status and ping"))
     .addSubcommand(s => s.setName("use").setDescription("Select an audio node for new voice connections")
       .addStringOption(o => o.setName("node").setDescription("Audio node name").setRequired(true).setAutocomplete(true)))
@@ -718,7 +718,7 @@ client.on("interactionCreate", async interaction => {
       const sub = interaction.options.getSubcommand();
       if (sub === "list" || sub === "refresh") {
         await interaction.deferReply({ ephemeral: true });
-        const result = await refreshAudioNodes(sub === "refresh");
+        await refreshAudioNodes(sub === "refresh");
         const preferred = shoukaku.getIdealNode()?.name;
         const rows = [...audioNodeConfigs.values()].map(config => {
           const health = audioNodeHealth.get(config.name);

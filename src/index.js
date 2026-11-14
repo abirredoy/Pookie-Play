@@ -114,7 +114,7 @@ const music = createMusic(shoukaku, async (guildId, track, state) => {
           else console.warn("[Player card] Track refresh failed:", error?.message || error);
         }
       }
-      return;
+      if (existing.size) return;
     }
     const message = await channel.send({ embeds: [embed], components: controlRows(q) });
     rememberPlayerMessage(guildId, message);
@@ -619,6 +619,7 @@ client.on("interactionCreate", async interaction => {
         return interaction.editReply("🎶 List Slot " + result.slot + " থেকে **" + result.track.info.title + "** চালু হচ্ছে। List Mode-এ পরের Slot-গুলোও সিরিয়াল অনুযায়ী বাজবে।");
       }
       const result = await music.play(interaction.guildId, channel, query, interaction.channelId);
+      await refreshPlayerCards(interaction.guildId, result.queued ? "Track added to queue" : "Playback started");
       return interaction.editReply(result.queued
         ? "➕ **" + result.track.info.title + "** Queue-তে যোগ হয়েছে। গান শুরু হলে নতুন Player card আসবে।"
         : "🎶 **" + result.track.info.title + "** চালু হচ্ছে। নতুন Player card পাঠানো হচ্ছে।");
@@ -676,6 +677,7 @@ client.on("interactionCreate", async interaction => {
       const channel = await requireVoice(interaction);
       await interaction.deferReply();
       await music.join(interaction.guildId, channel);
+      await refreshPlayerCards(interaction.guildId, "Connected to voice channel");
       return interaction.editReply("🎧 Pookie Play voice channel-এ যোগ দিয়েছে।");
     }
 

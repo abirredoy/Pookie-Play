@@ -26,7 +26,10 @@ jobs:
       - name: Install bot dependencies
         run: npm install
 
-      - name: Start Pookie Play with CloudeWave public Lavalink
+      - name: Validate bot JavaScript syntax
+        run: node --check src/index.js
+
+      - name: Start Pookie Play with public Lavalink fallback
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           CLIENT_ID: ${{ secrets.CLIENT_ID }}

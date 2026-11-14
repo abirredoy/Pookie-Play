@@ -1,7 +1,7 @@
 require("dotenv").config();
 const {
   Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder,
-  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits
+  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, ChannelType
 } = require("discord.js");
 const express = require("express");
 const { Shoukaku, Connectors } = require("shoukaku");
@@ -54,6 +54,11 @@ const commands = [
   new SlashCommandBuilder().setName("stop").setDescription("Stop playback and clear the queue"),
   new SlashCommandBuilder().setName("volume").setDescription("Set volume")
     .addIntegerOption(o => o.setName("value").setDescription("0 to 100").setMinValue(0).setMaxValue(100).setRequired(true)),
+  new SlashCommandBuilder().setName("commandchannel").setDescription("Set the only channel where bot commands are allowed")
+    .addSubcommand(s => s.setName("set").setDescription("Choose the command channel")
+      .addChannelOption(o => o.setName("channel").setDescription("Text channel for all bot commands").addChannelTypes(ChannelType.GuildText).setRequired(true)))
+    .addSubcommand(s => s.setName("show").setDescription("Show the current command channel"))
+    .addSubcommand(s => s.setName("clear").setDescription("Remove the command channel restriction")),
   new SlashCommandBuilder().setName("controlroles").setDescription("Manage roles allowed to control Pookie Play")
     .addSubcommand(s => s.setName("show").setDescription("Show all control roles"))
     .addSubcommand(s => s.setName("add").setDescription("Add a role allowed to control the bot")
@@ -86,6 +91,7 @@ shoukaku.on("ready", name => console.log("[Lavalink] Connected:", name));
 shoukaku.on("error", (name, error) => console.error("[Lavalink] Error:", name, error));
 shoukaku.on("close", (name, code, reason) => console.warn("[Lavalink] Closed:", name, code, reason));
 const playerMessages = new Map();
+const commandChannels = new Map();
 const searchResults = new Map();
 const music = createMusic(shoukaku, async (guildId, track, state) => {
   try {
@@ -100,7 +106,7 @@ const music = createMusic(shoukaku, async (guildId, track, state) => {
     embed.setFooter({ text: "📜 List: " + (state.listMode ? "ON" : "OFF") + " • 📻 Similar-track radio: " + (state.listMode ? "OFF" : "ON") + "\n📍 Status: Player ready" });
     if (info.uri) embed.setURL(info.uri);
     const message = await channel.send({ embeds: [embed], components: controlRows(q) });
-    playerMessages.set(guildId, message);
+    rememberPlayerMessage(guildId, message);
   } catch (error) {
     console.error("[Player message] Could not post track card:", error?.message || error);
   }
@@ -172,6 +178,57 @@ async function loadControlRoles() {
   console.log("[Permissions] Loaded control roles for", controlRoles.size, "server(s).");
 }
 
+async function loadCommandChannels() {
+  const repo = process.env.GITHUB_REPOSITORY;
+  const token = process.env.GITHUB_TOKEN;
+  if (!repo || !token) {
+    console.warn("[Command Channel] GitHub persistence unavailable; channel restriction cannot be saved.");
+    return;
+  }
+  const url = "https://api.github.com/repos/" + repo + "/contents/data/command-channels.json";
+  const response = await fetch(url, { headers: { Authorization: "Bearer " + token, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" } });
+  if (response.status === 404) return;
+  if (!response.ok) throw new Error("Could not load command channels: HTTP " + response.status);
+  const file = await response.json();
+  const saved = JSON.parse(Buffer.from(file.content, "base64").toString("utf8"));
+  for (const [guildId, channelId] of Object.entries(saved)) if (typeof channelId === "string" && channelId) commandChannels.set(guildId, channelId);
+  console.log("[Command Channel] Loaded settings for", commandChannels.size, "server(s).");
+}
+
+async function saveCommandChannel(guildId, channelId) {
+  const repo = process.env.GITHUB_REPOSITORY;
+  const token = process.env.GITHUB_TOKEN;
+  if (!repo || !token) throw new Error("GitHub storage is unavailable. Start the bot through GitHub Actions.");
+  const url = "https://api.github.com/repos/" + repo + "/contents/data/command-channels.json";
+  const headers = { Authorization: "Bearer " + token, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
+  const current = await fetch(url, { headers });
+  let saved = {};
+  let sha;
+  if (current.ok) {
+    const file = await current.json();
+    sha = file.sha;
+    saved = JSON.parse(Buffer.from(file.content, "base64").toString("utf8"));
+  } else if (current.status !== 404) throw new Error("Could not read command channel settings: HTTP " + current.status);
+  if (channelId) saved[guildId] = channelId;
+  else delete saved[guildId];
+  const body = { message: "Update Pookie Play command channel", content: Buffer.from(JSON.stringify(saved, null, 2) + "\n").toString("base64"), branch: process.env.GITHUB_REF_NAME || "main" };
+  if (sha) body.sha = sha;
+  const response = await fetch(url, { method: "PUT", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!response.ok) throw new Error("Could not save command channel: HTTP " + response.status + " " + (await response.text()).slice(0, 250));
+  if (channelId) commandChannels.set(guildId, channelId);
+  else commandChannels.delete(guildId);
+}
+
+function commandChannelAllowed(interaction) {
+  const allowed = commandChannels.get(interaction.guildId);
+  return !allowed || interaction.channelId === allowed;
+}
+
+function isServerAdmin(interaction) {
+  return Boolean(interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ||
+    (interaction.guild?.ownerId && interaction.user?.id === interaction.guild.ownerId));
+}
+
 async function saveControlRoles(guildId, roleIds) {
   const repo = process.env.GITHUB_REPOSITORY;
   const token = process.env.GITHUB_TOKEN;
@@ -229,11 +286,12 @@ function playerStatusFooter(q, status = "Ready") {
 function setPlayerStats(embed, q = {}) {
   const current = q.current || {};
   const mode = q.listMode ? "List" : "Similar-track radio";
+  const playbackStatus = current.title ? (q.paused ? "Paused" : "Playing") : (q.node && q.node !== "Disconnected" ? "Stopped" : "Disconnected");
   embed.setFields(
     { name: "🎧 Source", value: String(current.sourceName || "Unknown"), inline: true },
     { name: "🔊 Volume", value: String(Number.isFinite(q.volume) ? q.volume : 100) + "%", inline: true },
     { name: "🔁 Repeat", value: String(q.repeat || "off").toUpperCase(), inline: true },
-    { name: "🎚️ Playback", value: mode + (q.paused ? " • Paused" : " • Playing"), inline: true },
+    { name: "🎚️ Playback", value: mode + " • " + playbackStatus, inline: true },
     { name: "📜 Upcoming", value: String(q.tracks?.length ?? 0) + " tracks", inline: true },
     { name: "🖥️ Audio Node", value: String(q.node || "Disconnected"), inline: true }
   );
@@ -273,6 +331,33 @@ function controlRows(q = {}) {
     )
   ];
 }
+
+function rememberPlayerMessage(guildId, message) {
+  if (!playerMessages.has(guildId)) playerMessages.set(guildId, new Set());
+  playerMessages.get(guildId).add(message);
+}
+
+async function refreshPlayerCards(guildId, status = "Player status synchronized") {
+  const messages = playerMessages.get(guildId);
+  if (!messages?.size) return;
+  const q = music.getQueue(guildId);
+  const title = q.current?.title || (q.node !== "Disconnected" ? "কোনো গান চলছে না" : "বট Voice Channel-এ যুক্ত নেই");
+  for (const message of [...messages]) {
+    try {
+      const embed = message.embeds?.[0] ? EmbedBuilder.from(message.embeds[0]) : new EmbedBuilder().setColor(0x5865f2);
+      embed.setTitle(q.current ? "🎶 Now Playing" : (q.node !== "Disconnected" ? "⏹️ Player Stopped" : "🔌 Player Disconnected"))
+        .setDescription(q.current ? "**" + String(q.current.title).slice(0, 240) + "**\\n" + String(q.current.author || "Unknown artist").slice(0, 180) : "**" + title + "**");
+      setPlayerStats(embed, q);
+      embed.setFooter(playerStatusFooter(q, status));
+      if (q.current?.uri) embed.setURL(q.current.uri);
+      await message.edit({ embeds: [embed], components: controlRows(q) });
+    } catch (error) {
+      if (error?.code === 10008) messages.delete(message);
+      else console.warn("[Player card] Refresh failed:", error?.message || error);
+    }
+  }
+}
+
 async function requireVoice(interaction) {
   const channel = interaction.member?.voice?.channel;
   if (!channel) throw new Error("আগে একটি voice channel-এ যোগ দাও।");
@@ -283,6 +368,8 @@ client.once("ready", async () => {
   console.log("Logged in as " + client.user.tag);
   try { await loadControlRoles(); }
   catch (error) { console.error("[Permissions] Failed to load role settings:", error); }
+  try { await loadCommandChannels(); }
+  catch (error) { console.error("[Command Channel] Failed to load settings:", error); }
   try { await loadListStorage(); }
   catch (error) { console.error("[List Queue] Failed to load saved slots:", error); }
   const rest = new REST({ version: "10" }).setToken(token);
@@ -299,6 +386,7 @@ client.on("interactionCreate", async interaction => {
   try {
     if (interaction.isButton()) {
       if (!interaction.guildId) return;
+      if (!commandChannelAllowed(interaction)) return interaction.reply({ content: "⛔ বটের Player controls শুধু নির্ধারিত Command Channel-এ ব্যবহার করা যাবে।", ephemeral: true });
       if (!hasControlPermission(interaction)) {
         return interaction.reply({ content: "⛔ Pookie Play নিয়ন্ত্রণ করার অনুমতি তোমার নেই। নির্ধারিত Role লাগবে।", ephemeral: true });
       }
@@ -336,7 +424,7 @@ client.on("interactionCreate", async interaction => {
         setPlayerStats(embed, q);
         embed.setFooter(playerStatusFooter(q, status));
         const updated = await interaction.update({ embeds: [embed], components: controlRows(q) });
-        playerMessages.set(interaction.guildId, interaction.message);
+        rememberPlayerMessage(interaction.guildId, interaction.message);
         return updated;
       }
       const simpleActions = {
@@ -404,12 +492,36 @@ client.on("interactionCreate", async interaction => {
       setPlayerStats(embed, q);
       embed.setFooter(playerStatusFooter(q, status));
       const updated = await interaction.message.edit({ embeds: [embed], components: controlRows(q) });
-      if (id === "leave") playerMessages.delete(interaction.guildId);
-      else playerMessages.set(interaction.guildId, interaction.message);
+      rememberPlayerMessage(interaction.guildId, interaction.message);
+      await refreshPlayerCards(interaction.guildId, status);
       return updated;
     }
     if (!interaction.isChatInputCommand()) return;
     const name = interaction.commandName;
+
+    if (name === "commandchannel") {
+      if (!isServerAdmin(interaction)) return interaction.reply({ content: "⛔ শুধু Server Owner বা Administrator Command Channel সেট করতে পারবে।", ephemeral: true });
+      const sub = interaction.options.getSubcommand();
+      if (sub === "show") {
+        const channelId = commandChannels.get(interaction.guildId);
+        return interaction.reply({ content: channelId ? "📍 Command Channel: <#" + channelId + ">" : "ℹ️ এখনো Command Channel সেট করা হয়নি।", ephemeral: true });
+      }
+      if (sub === "set") {
+        const channel = interaction.options.getChannel("channel", true);
+        await interaction.deferReply({ ephemeral: true });
+        await saveCommandChannel(interaction.guildId, channel.id);
+        return interaction.editReply("✅ এখন থেকে বটের কমান্ড শুধু " + channel.toString() + " চ্যানেল থেকে কাজ করবে।");
+      }
+      if (sub === "clear") {
+        await interaction.deferReply({ ephemeral: true });
+        await saveCommandChannel(interaction.guildId, null);
+        return interaction.editReply("✅ Command Channel restriction সরানো হয়েছে। এখন সব চ্যানেল থেকে কমান্ড দেওয়া যাবে।");
+      }
+    }
+
+    if (!commandChannelAllowed(interaction)) {
+      return interaction.reply({ content: "⛔ বটের কমান্ড শুধু নির্ধারিত Command Channel-এ ব্যবহার করা যাবে।", ephemeral: true });
+    }
 
     if (name === "help") {
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play — Help")
@@ -556,6 +668,7 @@ client.on("interactionCreate", async interaction => {
 
     if (name === "leave") {
       await music.leave(interaction.guildId);
+      await refreshPlayerCards(interaction.guildId, "Disconnected from voice channel");
       return interaction.reply("👋 Voice channel ছেড়েছি।");
     }
 
@@ -578,7 +691,9 @@ client.on("interactionCreate", async interaction => {
         .setDescription("**" + info.title + "**\n" + (info.author || "Unknown artist"))
         .addFields({name:"Repeat",value:data.repeat,inline:true});
       if (info.uri) embed.setURL(info.uri);
-      return interaction.reply({embeds:[embed],components:controlRows()});
+      await interaction.reply({embeds:[embed],components:controlRows(data)});
+      rememberPlayerMessage(interaction.guildId, await interaction.fetchReply());
+      return;
     }
 
     if (name === "shuffle") {
@@ -624,7 +739,9 @@ client.on("interactionCreate", async interaction => {
         .setDescription("**" + title + "**\\n/play কমান্ড দিয়ে গান চালাও। নিচের বাটনগুলো গান চলুক বা না চলুক এখানেই থাকবে।");
       setPlayerStats(embed, data);
       embed.setFooter(playerStatusFooter(data, data.current ? "Player ready" : "Waiting for /play"));
-      return interaction.reply({ embeds: [embed], components: controlRows(data) });
+      await interaction.reply({ embeds: [embed], components: controlRows(data) });
+      rememberPlayerMessage(interaction.guildId, await interaction.fetchReply());
+      return;
     }
 
     if (name === "player") {
@@ -632,11 +749,14 @@ client.on("interactionCreate", async interaction => {
       const title = data.current?.title || "কোনো গান চলছে না";
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎧 Pookie Play Player")
         .setDescription("**" + title + "**\\nAutoplay: " + data.mode);
-      return interaction.reply({ embeds: [embed], components: controlRows(data) });
+      await interaction.reply({ embeds: [embed], components: controlRows(data) });
+      rememberPlayerMessage(interaction.guildId, await interaction.fetchReply());
+      return;
     }
 
     if (["pause", "resume", "skip", "stop"].includes(name)) {
       const ok = await music[name](interaction.guildId);
+      await refreshPlayerCards(interaction.guildId, name === "stop" ? "Playback stopped" : (name === "pause" ? "Playback paused" : name === "resume" ? "Playback resumed" : "Track skipped"));
       const labels = { pause: "Pause", resume: "Resume", skip: "Skip", stop: "Stop" };
       return interaction.reply(ok ? "✅ " + labels[name] + " সম্পন্ন হয়েছে।" : "এখন কোনো গান চলছে না।");
     }
@@ -644,14 +764,7 @@ client.on("interactionCreate", async interaction => {
     if (name === "volume") {
       const value = interaction.options.getInteger("value", true);
       const actual = await music.volume(interaction.guildId, value);
-      const savedMessage = playerMessages.get(interaction.guildId);
-      if (savedMessage?.embeds?.[0]) {
-        const q = music.getQueue(interaction.guildId);
-        const embed = EmbedBuilder.from(savedMessage.embeds[0]);
-        setPlayerStats(embed, q);
-        await savedMessage.edit({ embeds: [embed], components: controlRows(q) }).catch(error =>
-          console.warn("[Player card] Could not refresh volume display:", error?.message || error));
-      }
+      await refreshPlayerCards(interaction.guildId, "Volume updated");
       return interaction.reply("🔊 Volume: " + actual + "%");
     }
   } catch (error) {

@@ -268,7 +268,7 @@ async function saveAudioNodeSettings(mode, nodeName = null) {
   const saved = { mode, nodeName: mode === "manual" ? nodeName : null };
   const body = {
     message: "Update Pookie Play Audio Node selection",
-    content: Buffer.from(JSON.stringify(saved, null, 2) + "\\n").toString("base64"),
+    content: Buffer.from(JSON.stringify(saved, null, 2) + "\n").toString("base64"),
     branch: process.env.GITHUB_REF_NAME || "main"
   };
   if (sha) body.sha = sha;

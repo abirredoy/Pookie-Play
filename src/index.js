@@ -147,8 +147,7 @@ if (process.env.PRIVATE_LAVALINK_HOST && process.env.PRIVATE_LAVALINK_PASSWORD) 
 
 function audioNodeScore(node) {
   const ping = audioNodeHealth.get(node.name)?.ping;
-  const pingScore = Number.isFinite(ping) ? ping : 5000;
-  return pingScore * 1000 + (Number(node.penalties) || 0);
+  return Number.isFinite(ping) ? ping : 5000;
 }
 
 const initialAudioNodes = [...audioNodeConfigs.values()].map(node => ({

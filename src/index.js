@@ -147,16 +147,6 @@ if (!configuredPublic) {
 addAudioNodeConfig({ name: "TriniumHost-V4", host: "lavalink.triniumhost.indevs.in", port: 4333, auth: "free", secure: false, source: "TriniumHost public node" });
 addAudioNodeConfig({ name: "TriniumHost-V4-SSL", host: "lavalink-v4.triniumhost.indevs.in", port: 443, auth: "free", secure: true, source: "TriniumHost public node" });
 
-if (process.env.PRIVATE_LAVALINK_HOST && process.env.PRIVATE_LAVALINK_PASSWORD) {
-  addAudioNodeConfig({
-    name: "Private-Lavalink",
-    ...parseAudioHostPort(process.env.PRIVATE_LAVALINK_HOST, process.env.PRIVATE_LAVALINK_PORT || 2333),
-    auth: process.env.PRIVATE_LAVALINK_PASSWORD,
-    secure: process.env.PRIVATE_LAVALINK_SECURE === "true",
-    source: "Private server"
-  });
-}
-
 function audioNodeScore(node) {
   const ping = audioNodeHealth.get(node.name)?.ping;
   return Number.isFinite(ping) ? ping : 5000;
@@ -878,7 +868,7 @@ client.on("interactionCreate", async interaction => {
       }
       if (sub === "list" || sub === "refresh") {
         await interaction.deferReply({ ephemeral: true });
-        await refreshAudioNodes(sub === "refresh");
+        await refreshAudioNodes(true);
         const preferred = shoukaku.getIdealNode()?.name;
         const rows = [...audioNodeConfigs.values()].map(config => {
           const health = audioNodeHealth.get(config.name);

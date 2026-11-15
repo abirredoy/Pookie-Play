@@ -161,8 +161,12 @@ const initialAudioNodes = [...audioNodeConfigs.values()].map(node => ({
 
 const shoukaku = new Shoukaku(new Connectors.DiscordJS(client), initialAudioNodes, {
   moveOnDisconnect: true,
-  reconnectTries: 5,
+  resume: true,
+  resumeByLibrary: true,
+  resumeTimeout: 60,
+  reconnectTries: 10,
   reconnectInterval: 5,
+  restTimeout: 20,
   nodeResolver: nodes => {
     const available = [...nodes.values()].filter(node => node.state === 1);
     if (!available.length) return undefined;
@@ -283,7 +287,24 @@ async function saveAudioNodeSettings(mode, nodeName = null) {
   selectedAudioNode = mode === "manual" ? nodeName : "auto";
 }
 
-shoukaku.on("ready", name => console.log("[Lavalink] Connected:", name));
+async function recoverDisconnectedAudioPlayers() {
+  const ideal = shoukaku.getIdealNode();
+  if (!ideal || ideal.state !== 1) return;
+  for (const player of shoukaku.players.values()) {
+    if (!player?.node || player.node.state === 1) continue;
+    try {
+      const moved = await player.move(ideal.name);
+      if (moved) console.log("[Audio Recovery] Moved player", player.guildId, "to", ideal.name);
+    } catch (error) {
+      console.warn("[Audio Recovery] Could not move player", player.guildId, "to", ideal.name, ":", error?.message || error);
+    }
+  }
+}
+
+shoukaku.on("ready", name => {
+  console.log("[Lavalink] Connected:", name);
+  setTimeout(() => recoverDisconnectedAudioPlayers().catch(error => console.error("[Audio Recovery]", error)), 1000).unref?.();
+});
 shoukaku.on("error", (name, error) => console.error("[Lavalink] Error:", name, error));
 shoukaku.on("close", (name, code, reason) => console.warn("[Lavalink] Closed:", name, code, reason));
 const playerMessages = new Map();
@@ -583,6 +604,9 @@ client.once("ready", async () => {
   refreshAudioNodes(true).catch(error => console.error("[Audio Nodes] Initial discovery failed:", error));
   const audioNodeHealthTimer = setInterval(() => refreshAudioNodes(false).catch(error => console.error("[Audio Nodes] Health refresh failed:", error)), 120000);
   audioNodeHealthTimer.unref?.();
+  // If every node was down during a disconnect, move stranded players as soon as a healthy node returns.
+  const audioNodeRecoveryTimer = setInterval(() => recoverDisconnectedAudioPlayers().catch(error => console.error("[Audio Recovery] Retry failed:", error)), 30000);
+  audioNodeRecoveryTimer.unref?.();
   const audioNodeDirectoryTimer = setInterval(() => refreshAudioNodes(true).catch(error => console.error("[Audio Nodes] Directory refresh failed:", error)), 600000);
   audioNodeDirectoryTimer.unref?.();
   try { await loadControlRoles(); }

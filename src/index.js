@@ -152,12 +152,9 @@ function audioNodeScore(node) {
   return Number.isFinite(ping) ? ping : 5000;
 }
 
-const initialAudioNodes = [...audioNodeConfigs.values()].map(node => ({
-  name: node.name,
-  url: node.host + ":" + node.port,
-  auth: node.auth,
-  secure: node.secure
-}));
+// Start with no WebSocket connections. Nodes are admitted only after their
+// Lavalink v4 REST endpoint passes checkAudioNode(), avoiding dead public hosts.
+const initialAudioNodes = [];
 
 const shoukaku = new Shoukaku(new Connectors.DiscordJS(client), initialAudioNodes, {
   moveOnDisconnect: true,
